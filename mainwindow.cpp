@@ -167,7 +167,7 @@ void MainWindow::GeminiSetup()
 {
     //initialized Gemini client
     aiClient = new GeminiClient(this);
-    aiClient->setApiKey("sk-v371No7bdNaaTYY1SoItAVRDi7o6p71BsBqaml0ABGxMpRW8");
+    aiClient->setApiKey("ENTER_YOUR_API_KEY_HERE");
     //connect Gemini slots
     connect(aiClient,&GeminiClient::aiResponseReceived,this,&MainWindow::handleAiResponse);
     connect(aiClient,&GeminiClient::titleGenerated,this,&MainWindow::handleTitleGenerated);
