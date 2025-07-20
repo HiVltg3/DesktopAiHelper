@@ -71,6 +71,10 @@
     <property name="text">
      <string>new chat</string>
     </property>
+    <property name="icon">
+     <iconset resource="resource.qrc">
+      <normaloff>:/icons/icons/chaticon.png</normaloff>:/icons/icons/chaticon.png</iconset>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -85,6 +89,8 @@
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
- <resources/>
+ <resources>
+  <include location="resource.qrc"/>
+ </resources>
  <connections/>
 </ui>

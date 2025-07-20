@@ -1,5 +1,7 @@
 <RCC>
     <qresource prefix="/icons">
         <file>icons/mainIcon.png</file>
+        <file>icons/chaticon.png</file>
+        <file>icons/magicwand.png</file>
     </qresource>
 </RCC>

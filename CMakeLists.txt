@@ -5,6 +5,8 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
 find_package(Qt6 REQUIRED COMPONENTS Network)
 find_package(Qt6 REQUIRED COMPONENTS Core)
 find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS TextToSpeech)
+
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOMOC ON)
 qt_standard_project_setup()
@@ -30,13 +32,13 @@ qt_add_executable(DesktopAiHelper
 
 target_link_libraries(DesktopAiHelper
     PRIVATE
-        Qt::Core
-        Qt::Widgets
-        Qt::Network
+    Qt::Core
+    Qt::Widgets
+    Qt::Network
 )
 target_link_libraries(DesktopAiHelper PRIVATE Qt6::Core)
 target_link_libraries(DesktopAiHelper PRIVATE Qt6::Core)
-
+target_link_libraries(DesktopAiHelper PRIVATE Qt6::TextToSpeech)
 include(GNUInstallDirs)
 
 install(TARGETS DesktopAiHelper

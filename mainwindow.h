@@ -29,6 +29,7 @@ private:
     QListView* chatHistoryList; //chat history shows on listview
     QItemSelectionModel* chatHistotySelectionModel;
     QStandardItemModel* chatHistoryModel;
+    QWidget* popup=nullptr;//popup rewrite widget
 
     //save the latest user input
     QString userInput;
@@ -42,15 +43,20 @@ private:
     // track the index of current conversation
     int currentConversationIndex = -1;
 
+    //saves the previous ClipboardText
+    QString previousClipboardText;
 private: //functions
     void loadChatHistory(QStandardItemModel *model); //load chat history
     QString getTextColorBasedOnTheme();
     void UISetup();
     void GeminiSetup();
-    void saveChatHistory(); // 新增：保存聊天历史到文件
+    void saveChatHistory(); // save chat history to local file
     void displayUserMessage(const QString &message); // displays users new msg
     void displayAIMessage(const QString &message); // displays Ai's new msg
 
+    //rewrite function related
+    void startClipboardMonitoring();
+    void showRewritePrompt(const QString& copiedText);
 private slots:
     void do_showChatHistory(const QModelIndex &index);
 
@@ -62,6 +68,10 @@ private slots:
     void on_button_sendText_clicked();
     void on_button_newChat_clicked();
 
+    //rewrite function related
+    void checkClipboard();
+    void rewriteText();
+    void onRewriteWithPromptClicked();
     // QWidget interface
 protected:
     virtual void closeEvent(QCloseEvent *event) override;

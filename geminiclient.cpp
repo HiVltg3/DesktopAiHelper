@@ -73,7 +73,7 @@ void GeminiClient::sendMessage(const QString &userInput, const QJsonArray &conve
     }
 
     //build request url
-    QUrl url("https://llmxapi.com/v1beta/models/gemini-2.5-pro:generateContent");
+    QUrl url("https://llmxapi.com/v1beta/models/gemini-2.5-flash:generateContent");
     QUrlQuery query;
     query.addQueryItem("key",Gemini_Key);
     url.setQuery(query);
@@ -101,7 +101,7 @@ void GeminiClient::requestConversationTitle(const QString &firstMessage)
         QMessageBox::information(nullptr,"Info","Current Gemini API Key is empty.");
         return;
     }
-    QUrl url("https://llmxapi.com/v1beta/models/gemini-2.5-pro:generateContent");
+    QUrl url("https://llmxapi.com/v1beta/models/gemini-2.5-flash:generateContent");
     QUrlQuery query;
     query.addQueryItem("key",Gemini_Key);
     url.setQuery(query);
@@ -206,7 +206,7 @@ void GeminiClient::sendRewriteRequest(const QString &usersClipBoardText, const Q
         return;
     }
 
-    QUrl url("https://llmxapi.com/v1beta/models/gemini-2.5-pro:generateContent");
+    QUrl url("https://llmxapi.com/v1beta/models/gemini-2.5-flash:generateContent");
     QUrlQuery query;
     query.addQueryItem("key", Gemini_Key);
     url.setQuery(query);

@@ -13,6 +13,10 @@
 #include <QDir>
 #include <QSplitter>
 #include <QPalette>
+#include <QInputDialog>
+#include <QTimer>
+#include <QClipboard>
+#include <QTextToSpeech>
 #include "geminiclient.h"
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -21,12 +25,17 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     UISetup();
     GeminiSetup();
-    aiClient->sendRewriteRequest("As discussed, we would like to escalate this matter to our superior.","be more casual, easy");
+
+    //rewrite detection tool
+    QClipboard* clipboard=QApplication::clipboard();
+    previousClipboardText=clipboard->text();
+    startClipboardMonitoring();
 }
 
 MainWindow::~MainWindow()
 {
     saveChatHistory();
+    delete popup;
     delete ui;
 }
 
@@ -140,6 +149,70 @@ void MainWindow::displayAIMessage(const QString &message)
     ui->AIResponse->append("<div style='text-align:left; color:"+textColor+";'><b>AI:</b> " + message + "</div><br><br>");
 }
 
+//rewrite function related
+void MainWindow::startClipboardMonitoring()
+{
+    QTimer* timer=new QTimer(this);
+    connect(timer,&QTimer::timeout,this,&MainWindow::checkClipboard);
+    timer->start(1000); //check clipboard every 1 second
+}
+
+void MainWindow::showRewritePrompt(const QString &copiedText)
+{
+    QPoint mousePosition=QCursor::pos();//get current mouse position
+    //popup the widget offer rewrite choice
+    popup=new QWidget();
+    popup->setWindowFlags(Qt::ToolTip|Qt::FramelessWindowHint);
+    popup->setGeometry(mousePosition.x(),mousePosition.y(),200,100); //show the tool at the mouse position
+
+    QPushButton* rewriteButton=new QPushButton("Rewrite",popup);
+    QPushButton* rewriteButtonWithPrompt=new QPushButton("Rewrite with prompt",popup);
+    rewriteButton->setGeometry(0,0,200,50);
+    rewriteButtonWithPrompt->setGeometry(0,50,200,50);
+    rewriteButton->setIcon(QIcon(":/icons/icons/magicwand.png"));
+    rewriteButtonWithPrompt->setIcon(QIcon(":/icons/icons/magicwand.png"));
+    connect(rewriteButton,&QPushButton::clicked,this,&MainWindow::rewriteText);
+    connect(rewriteButtonWithPrompt,&QPushButton::clicked,this,&MainWindow::onRewriteWithPromptClicked);
+
+    //hover 3s then close automatically
+    QTimer::singleShot(5000, popup, &QWidget::close);
+    popup->show();
+}
+
+void MainWindow::checkClipboard()
+{
+    QClipboard* clipboard=QApplication::clipboard();
+    QString currentText=clipboard->text();
+
+    if(currentText!=previousClipboardText){
+        previousClipboardText=currentText;
+        showRewritePrompt(currentText);
+    }
+}
+
+void MainWindow::rewriteText()
+{
+    QClipboard* clipboard=QApplication::clipboard();
+    QString currentText=clipboard->text();
+
+    aiClient->sendRewriteRequest(currentText);
+}
+
+void MainWindow::onRewriteWithPromptClicked()
+{
+    bool ok;
+    QString prompt=QInputDialog::getText(popup,"Enter Prompt", "Please enter the prompt:", QLineEdit::Normal, "", &ok);
+    if(ok && !prompt.isEmpty()){
+        QClipboard* clipboard=QApplication::clipboard();
+        QString currentText=clipboard->text();
+
+        if(!currentText.isEmpty()){
+            aiClient->sendRewriteRequest(currentText,prompt);
+        }
+    }else{
+        QMessageBox::warning(this, "Warning", "Prompt cannot be empty!");
+    }
+}
 
 void MainWindow::UISetup()
 {
@@ -238,7 +311,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
         QMessageBox::warning(this,"Warning","Please wait the current chat is finished.");
         return;
     }
-    event->accept();
+    event->ignore();
+    this->hide(); //hide window
 }
 //Ai slots
 void MainWindow::handleAiResponse(const QString &response)
@@ -330,10 +404,15 @@ void MainWindow::handleTitleGenerated(const QString &title)
 
 }
 
+
 void MainWindow::handleRewritedContent(const QString &rewritedContent)
 {
-    //test
-    ui->UserInput->appendPlainText(rewritedContent);
+    QClipboard *clipboard = QApplication::clipboard();
+    clipboard->setText(rewritedContent);//paste the rewritedContent to clipboard
+    //debug
+    QMessageBox::information(this, "Text Copied", "The rewritten text has been copied to the clipboard!");
+    QTextToSpeech *speech = new QTextToSpeech();
+    speech->say("rewrite complete");
 }
 //slots end here
 
