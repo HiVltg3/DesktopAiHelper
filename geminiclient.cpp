@@ -155,25 +155,58 @@ void GeminiClient::onNetworkReplyFinished(QNetworkReply *reply)
     qDebug() << "Received data from Gemini:" << QString(data);
 
     QString extractedText;
-    if(doc.isObject()){
-        QJsonObject obj=doc.object();
-        if(obj.contains("candidates")&&obj["candidates"].isArray()){
-            QJsonArray candidatesArray=obj["candidates"].toArray();
-            if(!candidatesArray.isEmpty() && candidatesArray[0].isObject()){
-                QJsonObject candidateObj=candidatesArray[0].toObject();
-                if(candidateObj.contains("content")&&candidateObj["content"].isObject()){
-                    QJsonObject contentObj=candidateObj["content"].toObject();
-                    if(contentObj.contains("parts")&&contentObj["parts"].isArray()){
-                        QJsonArray partsArray=contentObj["parts"].toArray();
-                        if(!partsArray.isEmpty()&&partsArray[0].isObject()){
-                            QJsonObject textObj=partsArray[0].toObject();
-                            if(textObj.contains("text")&&textObj["text"].isString()){
-                                extractedText=textObj["text"].toString().trimmed();
+    if(type==RequestType::PicGeneration){
+        if(doc.isObject()){
+            QJsonObject obj=doc.object();
+            if(obj.contains("predictions")&&obj["predictions"].isArray()){
+                QJsonArray predictionsArray=obj["predictions"].toArray();
+                if(!predictionsArray.isEmpty()&&predictionsArray[0].isObject()){
+                    QJsonObject predictionObj=predictionsArray[0].toObject();
+                    if(predictionObj.contains("bytesBase64Encoded")&&predictionObj["bytesBase64Encoded"].isString()){
+                        QString dataString=predictionObj["bytesBase64Encoded"].toString();
+                        QByteArray byteData=QByteArray::fromBase64(dataString.toUtf8());//
+                        QPixmap image;
+                        if(image.loadFromData(byteData)){
+                            qDebug()<<"Emitting imageGenerated signal.";
+                            emit generatedImgReceived(image);
+                        }else{
+                            emit errorOccured("Failed to load image from base64 data.");
+                        }
+                    }else{
+                        emit errorOccured("Image data not found in response.");
+                    }
+                }else{
+                    emit errorOccured("No image predictions found in response.");
+                }
+            }else{
+                emit errorOccured("Invalid image generation response format (no 'predictions' array).");
+            }
+        }else{
+            emit errorOccured("Invalid image generation response format (not an object).");
+        }
+    }
+    //text related
+    else{
+        if(doc.isObject()){
+            QJsonObject obj=doc.object();
+            if(obj.contains("candidates")&&obj["candidates"].isArray()){
+                QJsonArray candidatesArray=obj["candidates"].toArray();
+                if(!candidatesArray.isEmpty() && candidatesArray[0].isObject()){
+                    QJsonObject candidateObj=candidatesArray[0].toObject();
+                    if(candidateObj.contains("content")&&candidateObj["content"].isObject()){
+                        QJsonObject contentObj=candidateObj["content"].toObject();
+                        if(contentObj.contains("parts")&&contentObj["parts"].isArray()){
+                            QJsonArray partsArray=contentObj["parts"].toArray();
+                            if(!partsArray.isEmpty()&&partsArray[0].isObject()){
+                                QJsonObject textObj=partsArray[0].toObject();
+                                if(textObj.contains("text")&&textObj["text"].isString()){
+                                    extractedText=textObj["text"].toString().trimmed();
 
-                                //extra steps for title
-                                if(type==RequestType::TitleGernation|type==RequestType::Rewrite){
-                                    if(extractedText.startsWith("\"")&&extractedText.endsWith("\"")){
-                                        extractedText=extractedText.mid(1,extractedText.length()-2);
+                                    //extra steps for title
+                                    if(type==RequestType::TitleGernation|type==RequestType::Rewrite){
+                                        if(extractedText.startsWith("\"")&&extractedText.endsWith("\"")){
+                                            extractedText=extractedText.mid(1,extractedText.length()-2);
+                                        }
                                     }
                                 }
                             }
@@ -183,6 +216,7 @@ void GeminiClient::onNetworkReplyFinished(QNetworkReply *reply)
             }
         }
     }
+
 
     if(extractedText.isEmpty()){
         emit errorOccured("Failed to extract valid response from AI. Raw: "+QString(data));
@@ -248,4 +282,41 @@ void GeminiClient::sendRewriteRequest(const QString &usersClipBoardText, const Q
     QNetworkReply* reply = networkManager->post(request, data);
     requestTypeMap.insert(reply, RequestType::Rewrite);
     qDebug() << "Sending the rewrite request to Gemini:" << QString(data);
+}
+
+//generate pics
+void GeminiClient::sendPicGenerationRequest(const QString &prompt)
+{
+    if(Gemini_Key.isEmpty()){
+        QMessageBox::information(nullptr,"Info","Current Gemini API Key is empty.");
+        return;
+    }
+
+    //!!!the api link is closed now, unable to test, please move to chatgpt
+    QUrl url("https://llmxapi.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent");
+    QUrlQuery query;
+    query.addQueryItem("key", Gemini_Key);
+    url.setQuery(query);
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");
+
+    QJsonObject instancesObj;
+    instancesObj["prompt"]=prompt;
+    QJsonArray instancesArray;
+    instancesArray.append(instancesObj);
+
+    QJsonObject parametersObj;
+    parametersObj["sampleCount"]=1;//generate 1 pic
+
+    QJsonObject jsonRequest;
+    jsonRequest["instances"]=instancesArray;
+    jsonRequest["parameters"]=parametersObj;
+
+    QJsonDocument doc(jsonRequest);
+    QByteArray data = doc.toJson();
+
+    QNetworkReply* reply=networkManager->post(request,data);
+    requestTypeMap.insert(reply,RequestType::PicGeneration);
+    qDebug()<<"Pic generation request sent to Gemini"<<QString(data);
 }

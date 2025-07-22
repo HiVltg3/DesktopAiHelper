@@ -17,15 +17,19 @@
 #include <QTimer>
 #include <QClipboard>
 #include <QTextToSpeech>
+#include <QBuffer>
+#include <QKeyEvent>
 #include "geminiclient.h"
+#include "chatgptclient.h"
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
     UISetup();
-    GeminiSetup();
-
+    setupEventFilter();
+    //GeminiSetup();
+    ChatGPTSetup();
     //rewrite detection tool
     QClipboard* clipboard=QApplication::clipboard();
     previousClipboardText=clipboard->text();
@@ -240,14 +244,53 @@ void MainWindow::GeminiSetup()
 {
     //initialized Gemini client
     aiClient = new GeminiClient(this);
-    aiClient->setApiKey("ENTER_YOUR_API_KEY_HERE");
+    aiClient->setApiKey("sk-v371No7bdNaaTYY1SoItAVRDi7o6p71BsBqaml0ABGxMpRW8");
     //connect Gemini slots
     connect(aiClient,&GeminiClient::aiResponseReceived,this,&MainWindow::handleAiResponse);
     connect(aiClient,&GeminiClient::titleGenerated,this,&MainWindow::handleTitleGenerated);
     connect(aiClient,&GeminiClient::errorOccured,this,&MainWindow::handleAiError);
     connect(aiClient,&GeminiClient::rewritedContentReceived,this,&MainWindow::handleRewritedContent);
+    connect(aiClient,&GeminiClient::generatedImgReceived,this,&MainWindow::handlePicContent);
 
 }
+
+void MainWindow::ChatGPTSetup()
+{
+    aiClient=new ChatGPTClient(this);
+    aiClient->setApiKey("sk-v371No7bdNaaTYY1SoItAVRDi7o6p71BsBqaml0ABGxMpRW8");
+    connect(aiClient,&ChatGPTClient::generatedImgReceived,this,&MainWindow::handlePicContent);
+    connect(aiClient,&ChatGPTClient::aiResponseReceived,this,&MainWindow::handleAiResponse);
+    connect(aiClient,&ChatGPTClient::titleGenerated,this,&MainWindow::handleTitleGenerated);
+    connect(aiClient,&ChatGPTClient::errorOccured,this,&MainWindow::handleAiError);
+    connect(aiClient,&ChatGPTClient::rewritedContentReceived,this,&MainWindow::handleRewritedContent);
+}
+
+void MainWindow::setupEventFilter()
+{
+    ui->UserInput->installEventFilter(this);  // 安装事件过滤器
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if(watched==ui->UserInput){
+        if(event->type()==QEvent::KeyPress){
+            QKeyEvent* keyEvent=static_cast<QKeyEvent*>(event);
+            if(keyEvent->key()==Qt::Key_Enter|| keyEvent->key() == Qt::Key_Return){
+                if (keyEvent->modifiers() & Qt::ShiftModifier) {
+                    // 如果按下的是 Shift + Enter，允许换行
+                    return false;  // 返回 false，事件继续传递给 QPlainTextEdit，进行换行
+                } else {
+                    // 否则，触发按钮点击
+                    ui->button_sendText->click();
+                    return true;  // 返回 true，表示事件已被处理
+                }
+            }
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+
 //functions end here
 
 //slots begin here
@@ -262,10 +305,10 @@ void MainWindow::do_showChatHistory(const QModelIndex &index)
     QTextBrowser *textBrowser = ui->AIResponse;
     textBrowser->setHtml(conversationContent);
     qDebug()<<"current Index: "<<currentConversationIndex;
-    if (currentConversationIndex != -1 && currentConversationIndex < allConversations.size()){
-        QJsonObject currentChatObject = allConversations.at(currentConversationIndex).toObject();
-        QJsonArray currentConversationHistory = currentChatObject["dialogue"].toArray();
-    }
+    // if (currentConversationIndex != -1 && currentConversationIndex < allConversations.size()){
+    //     QJsonObject currentChatObject = allConversations.at(currentConversationIndex).toObject();
+    //     QJsonArray currentConversationHistory = currentChatObject["dialogue"].toArray();
+    // }
 }
 
 void MainWindow::on_button_sendText_clicked()
@@ -276,7 +319,7 @@ void MainWindow::on_button_sendText_clicked()
     displayUserMessage(userInput);//append the user's new text to browser
     ui->UserInput->clear();
     ui->button_sendText->setEnabled(false);
-    qDebug()<<"current Index: "<<currentConversationIndex;
+
 
     QJsonArray currentConversationHistory;
     //bool isNewConversation=false;
@@ -287,8 +330,14 @@ void MainWindow::on_button_sendText_clicked()
 
     //check if it's new chat
     if(currentConversationIndex!=-1&&currentConversationIndex<allConversations.size()){
-        //if it's a previous chat, send message here
-        aiClient->sendMessage(userInput,currentConversationHistory);
+        //check pic gen
+        if(ui->checkBox_imgGen->isChecked()){
+            aiClient->sendPicGenerationRequest(userInput);
+            ui->checkBox_imgGen->setEnabled(false);
+        }else{
+            //if it's a previous chat, send message here
+            aiClient->sendMessage(userInput,currentConversationHistory);
+        }
     }
     else{
         //only get title here, do not get reply from ai here!!!
@@ -305,6 +354,8 @@ void MainWindow::on_button_newChat_clicked()
     ui->AIResponse->clear();
     chatHistoryList->selectionModel()->select(chatHistoryList->selectionModel()->currentIndex(),QItemSelectionModel::Deselect);
 }
+
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if(!ui->button_sendText->isEnabled()){
@@ -363,6 +414,7 @@ void MainWindow::handleAiResponse(const QString &response)
             content += "<div style='text-align:left; color:"+color+";'><b>AI:</b> " + aiMessage + "</div><br><br>";
         }
         item->setData(content,Qt::UserRole);
+        ui->AIResponse->setHtml(content);
     }
     saveChatHistory();
 }
@@ -398,12 +450,17 @@ void MainWindow::handleTitleGenerated(const QString &title)
 
     //send message
     QJsonArray chatArray=allConversations.at(currentConversationIndex).toArray();
-    aiClient->sendMessage(userInput,chatArray);
+    if(ui->checkBox_imgGen->isChecked()){
+        aiClient->sendPicGenerationRequest(userInput);
+        ui->checkBox_imgGen->setEnabled(false);
+
+    }else{
+        aiClient->sendMessage(userInput,chatArray);
+    }
     saveChatHistory();
 
 
 }
-
 
 void MainWindow::handleRewritedContent(const QString &rewritedContent)
 {
@@ -414,7 +471,55 @@ void MainWindow::handleRewritedContent(const QString &rewritedContent)
     QTextToSpeech *speech = new QTextToSpeech();
     speech->say("rewrite complete");
 }
+
+void MainWindow::handlePicContent(const QPixmap &image)
+{
+    // 将 QPixmap 转换为 Base64 编码的字符串
+    QByteArray byteArray;
+    QBuffer buffer(&byteArray);
+    buffer.open(QIODevice::WriteOnly);
+    //save as png
+    image.save(&buffer,"PNG");
+    QString base64Image=byteArray.toBase64();
+
+    QString textColor=getTextColorBasedOnTheme();
+
+    QString htmlImg=QString("<div style='text-align:center; color:%1;'><b>Generated Image:</b></div><br>"
+                              "<div style='text-align:center;'><img src='data:image/png;base64,%2' style='max-width:100%%; height:auto; border: 1px solid gray; border-radius: 8px;'/></div><br><br>")
+                          .arg(textColor)
+                          .arg(base64Image);
+    // 将 HTML 添加到 QTextBrowser
+    ui->AIResponse->append(htmlImg);
+
+    ui->button_sendText->setEnabled(true);
+
+    ui->checkBox_imgGen->setEnabled(true);
+}
 //slots end here
 
 
+
+
+void MainWindow::on_comboBox_currentIndexChanged(int index)
+{
+    if(!ui->button_sendText->isEnabled()){
+        QMessageBox::warning(this,"warning","Please wait the current chat is generated!");
+        return;
+    }
+    delete aiClient;
+    switch(static_cast<AI_Models>(index)){
+    case AI_Models::ChatGPT:
+        ChatGPTSetup();
+        QMessageBox::information(this,"Info","Switched to ChatGPT");
+        break;
+    case AI_Models::Gemini:
+        GeminiSetup();
+        QMessageBox::information(this,"Info","Switched to GeminiClient");
+        break;
+    default:
+        ChatGPTSetup();
+        QMessageBox::information(this,"Info","Switched to ChatGPT(default)");
+        break;
+    }
+}
 

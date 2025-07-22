@@ -22,6 +22,7 @@ qt_add_executable(DesktopAiHelper
     geminiclient.h geminiclient.cpp
     resource.qrc
     README.md
+    chatgptclient.h chatgptclient.cpp
 
 
 

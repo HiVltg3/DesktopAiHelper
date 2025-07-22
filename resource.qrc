@@ -3,5 +3,8 @@
         <file>icons/mainIcon.png</file>
         <file>icons/chaticon.png</file>
         <file>icons/magicwand.png</file>
+        <file>icons/chatgpt.png</file>
+        <file>icons/Gemini.png</file>
+        <file>icons/sendIcon.png</file>
     </qresource>
 </RCC>

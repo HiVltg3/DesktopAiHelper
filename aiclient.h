@@ -23,6 +23,9 @@ public:
 
     //request to rewrite
     virtual void sendRewriteRequest(const QString& usersClipBoardText,const QString& usersDemand="")=0;
+
+    //pic generation
+    virtual void sendPicGenerationRequest(const QString& prompt)=0;
 signals:
     //get ai reply
     void aiResponseReceived(const QString& response);
@@ -32,8 +35,17 @@ signals:
     void titleGenerated(const QString& title);
     //rewrite content return
     void rewritedContentReceived(const QString& rewritedContent);
+    //pic gen
+    void generatedImgReceived(const QPixmap& image);
 protected:
+
     QNetworkAccessManager* networkManager;
+    enum class RequestType{
+        ChatMessage,
+        TitleGernation,
+        Rewrite,
+        PicGeneration
+    };
 };
 
 #endif // AICLIENT_H

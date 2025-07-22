@@ -3,5 +3,5 @@
 AIClient::AIClient(QObject *parent)
     : QObject{parent}
 {
-    networkManager = new QNetworkAccessManager(this);
+    networkManager = new QNetworkAccessManager(parent);
 }

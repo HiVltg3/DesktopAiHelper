@@ -51,12 +51,22 @@
      <rect>
       <x>660</x>
       <y>510</y>
-      <width>80</width>
+      <width>100</width>
       <height>18</height>
      </rect>
     </property>
+    <property name="minimumSize">
+     <size>
+      <width>100</width>
+      <height>0</height>
+     </size>
+    </property>
     <property name="text">
      <string>Send</string>
+    </property>
+    <property name="icon">
+     <iconset>
+      <normaloff>icons/sendIcon.png</normaloff>icons/sendIcon.png</iconset>
     </property>
    </widget>
    <widget class="QPushButton" name="button_newChat">
@@ -64,9 +74,15 @@
      <rect>
       <x>550</x>
       <y>510</y>
-      <width>80</width>
+      <width>100</width>
       <height>18</height>
      </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>100</width>
+      <height>0</height>
+     </size>
     </property>
     <property name="text">
      <string>new chat</string>
@@ -75,6 +91,62 @@
      <iconset resource="resource.qrc">
       <normaloff>:/icons/icons/chaticon.png</normaloff>:/icons/icons/chaticon.png</iconset>
     </property>
+   </widget>
+   <widget class="QCheckBox" name="checkBox_imgGen">
+    <property name="geometry">
+     <rect>
+      <x>660</x>
+      <y>540</y>
+      <width>100</width>
+      <height>17</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>100</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="text">
+     <string>Image generation</string>
+    </property>
+   </widget>
+   <widget class="QComboBox" name="comboBox">
+    <property name="geometry">
+     <rect>
+      <x>350</x>
+      <y>490</y>
+      <width>100</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>100</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="layoutDirection">
+     <enum>Qt::LayoutDirection::LeftToRight</enum>
+    </property>
+    <item>
+     <property name="text">
+      <string>ChatGPT</string>
+     </property>
+     <property name="icon">
+      <iconset resource="resource.qrc">
+       <normaloff>:/icons/icons/chatgpt.png</normaloff>:/icons/icons/chatgpt.png</iconset>
+     </property>
+    </item>
+    <item>
+     <property name="text">
+      <string>Google Gemini</string>
+     </property>
+     <property name="icon">
+      <iconset resource="resource.qrc">
+       <normaloff>:/icons/icons/Gemini.png</normaloff>:/icons/icons/Gemini.png</iconset>
+     </property>
+    </item>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">

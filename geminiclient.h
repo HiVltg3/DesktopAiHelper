@@ -8,11 +8,7 @@ class GeminiClient : public AIClient
     Q_OBJECT
 private:
     QString Gemini_Key; //store api key
-    enum class RequestType{
-        ChatMessage,
-        TitleGernation,
-        Rewrite
-    };
+
     QMap<QNetworkReply*,RequestType> requestTypeMap;
     QJsonArray builtGeminiContents(const QJsonArray& conversationHistory,const QString& currentUserInput="");
 public:
@@ -22,10 +18,13 @@ public:
     void sendMessage(const QString& userInput,const QJsonArray& conversationHistory) override;
     void requestConversationTitle(const QString& firstMessage) override;
     void sendRewriteRequest(const QString &usersClipBoardText,const QString& usersDemand="") override;
+    void sendPicGenerationRequest(const QString &prompt) override;
 private slots:
     void onNetworkReplyFinished(QNetworkReply *reply);
 
     // AIClient interface
+
+
 
 };
 
