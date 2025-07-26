@@ -2,121 +2,123 @@
 # AI Desktop Tool Project Documentation
 
 ## 1. Project Overview
+This document provides a detailed overview of the desktop AI tool developed using Qt. The tool currently focuses on text-based AI interactions, offering conversation management, context-aware responses, and text rewriting functionalities. The project aims to evolve into a fully functional MVP (Minimal Viable Product), with future plans to include clipboard integration for smart suggestions, image generation, and a more refined user interface.
 
-This document details the development of a desktop-based Artificial Intelligence (AI) tool built with Qt. The tool currently focuses on text-based AI interactions, offering conversation management, context-aware responses, and basic text rewriting capabilities. The project aims to evolve into a versatile MVP (Minimum Viable Product) with advanced features like clipboard integration for intelligent suggestions, image generation, and a refined user interface.
+## 2. Core Features Showcase
+This section will showcase the main features of the AI desktop tool and an overview of the user interface.
 
-## 2. Usage Instructions
+### 2.1. Main Interface Overview and AI Model Selection
+The application provides a simple and intuitive main interface where users can engage in conversations and view AI responses. Importantly, users can easily select different AI models (currently supporting GPT and Gemini) to experience various dialogue styles and capabilities.
 
-### 2.1. Development Environment
-- **Qt Version**: 6.9.1
-- **Compiler**: MSVC x64
-- **Build System**: CMake
+![Main Interface Screenshot, please replace the link](img/demo.png)
 
-### 2.2. How to Open and Build the Project
-1. Open Qt Creator.
-2. Select "Open Project" and navigate to your project directory to select the `CMakeLists.txt` file.
-3. Build the project in Qt Creator.
+### 2.2. AI Dialogue Effect Demonstration
+Both the GPT and Gemini models can provide coherent and relevant responses based on context, significantly enhancing the user interaction experience.
 
-### 2.3. API Key Configuration
-For security reasons, set the API key manually in `geminiclient.cpp`:
+![Model Selection Screenshot, please replace the link](img/AIModelSelect.png)
 
-```cpp
-aiClient->setApiKey("YOUR_GEMINI_API_KEY_HERE");
-```
+### 2.3. Text Rewriting Feature Demonstration
+The tool offers a powerful text rewriting feature, allowing users to input text and provide rewriting instructions. The AI will adjust the text style, tone, or content based on the request. This is highly useful for daily communication and content creation.
 
-### 2.4. Running the Application
-- After building, run the application and ensure `chathistory.json` is in the same directory as the executable.
+**Use case:**
+The user inputs a piece of text and specifies requirements like “make it more casual” or “make it more formal,” and the AI will instantly generate a rewritten version that fits the request.
 
-## 3. Technical Thought Process: AI Class Functionality Implementation
+![Rewriting Feature GIF Demonstration, please replace the link](img/rewriteDemo.gif)
 
-### 3.1. AIClient: Defining a Common Interface for AI Services
-The core of the AI tool lies in the `AIClient` and `GeminiClient` classes. These classes work together to manage communication with the AI service.
+## 3. Technical Architecture
 
-#### 3.1.1. AIClient Overview
-`AIClient` is an abstract base class that defines the general interface for all AI clients. It ensures that no matter which AI model you integrate (such as Gemini or another one), they will follow the same interface, making the code more extensible and maintainable.
+The application follows a clear separation of responsibilities and utilizes the following key components:
 
-- **Purpose**: 
-  - **Define General APIs**: Methods like `setApiKey()`, `sendMessage()`, `requestConversationTitle()`, and `sendRewriteRequest()` are defined as virtual functions that any AI client must implement.
-  - **Define General Signals**: Signals such as `aiResponseReceived()`, `errorOccured()`, `titleGenerated()`, and `rewritedContentReceived()` are used to notify the external application (like `MainWindow`) about AI responses, errors, or specific request results.
-  - **Network Management**: The class contains a `QNetworkAccessManager* networkManager` member for handling all network requests.
+### AIClient (Abstract Base Class)
+Defines the common interface for interacting with AI services, including methods for setting API keys, sending messages, requesting conversation titles, sending rewrite requests, and requesting image generation. It also defines signals for receiving AI responses, errors, and generated titles/rewrite content/image data.
 
-#### 3.1.2. GeminiClient: Concrete Implementation for the Gemini API
-`GeminiClient` inherits from `AIClient` and implements the specific logic for interacting with the Google Gemini API. It serves as the "bridge" between your application and the Gemini model.
+### GeminiClient (Specific AI Implementation)
+Inherits from `AIClient` and implements the interaction logic with the Google Gemini API. It handles API key storage, constructs JSON requests (including conversation history for context), manages different request types (chat, title generation, rewriting, image generation), and processes AI responses.
 
-##### 3.1.2.1. Key Implementation Mechanisms:
+#### Extensibility Design: Unified Network Response Handling
+To efficiently and flexibly handle different types of AI requests (such as chat, title generation, rewriting, image generation), `GeminiClient` adopts the following core design patterns:
+- **Enum (enum class RequestType):** Defines an enumeration that clearly identifies the type of each request (ChatMessage, TitleGeneration, Rewrite, ImageGeneration). This helps tag each request when sending it.
 
-a. **Request Type Enumeration**: 
-In order to differentiate between request types (such as chat message, title generation, or rewrite request), `GeminiClient` defines an enum:
-
-```cpp
-enum class RequestType {
-    ChatMessage,      // Chat message request
-    TitleGeneration,   // Title generation request
-    Rewrite           // Rewrite request
-};
-```
-
-When you call methods like `sendMessage()`, `requestConversationTitle()`, or `sendRewriteRequest()`, this enum marks the type of request.
-
-b. **Mapping `QNetworkReply*` to `RequestType`**: 
-Network requests are asynchronous. When you send a `QNetworkReply* reply = networkManager->post(request, data);`, the response is not immediate. To track which request corresponds to which response, `GeminiClient` uses a `QMap`:
-
-```cpp
-QMap<QNetworkReply*, RequestType> requestTypeMap;
-```
-
-c. **Unified Handling of All Network Replies**: 
-All `QNetworkAccessManager` `finished` signals are connected to `GeminiClient::onNetworkReplyFinished`, ensuring all AI service network replies are processed in a single function.
-
-- **Process Flow**:
-    1. **Send Request**: When you send a request via `networkManager->post()`, the corresponding `RequestType` is added to `requestTypeMap`.
-    2. **Handle Response**: Upon receiving a response in `onNetworkReplyFinished(QNetworkReply *reply)`, the type of request is looked up from `requestTypeMap`. Then, based on the request type, the relevant signal is emitted (e.g., `aiResponseReceived()`, `titleGenerated()`, `rewritedContentReceived()`).
-    3. **Resource Cleanup**: Once the request is handled, `reply->deleteLater()` is called to safely delete the `QNetworkReply` object.
-
-This design allows for clear request management, centralized response handling, and easy extensibility.
-
-### 3.2. Benefits of This Approach
-- **Clear Request Management**: Differentiating request types through enums and a mapping system ensures each request is tracked and handled properly.
-- **Centralized Response Handling**: All network responses are processed in one place, simplifying code structure.
-- **Scalability**: New AI request types can be easily added by modifying the enum and extending `onNetworkReplyFinished()` without creating new functions for each request type.
-
-## 4. Current Features (MVP - Phase 1)
-
-### 4.1. AI API Integration
-- Connects to an external AI service (specifically, Gemini 2.5 Pro via `llmxapi.com`) to send user queries and receive AI responses.
-- Manages API key for authentication.
-- **API URL Modification**: The URL used for API communication should be updated in the `GeminiClient` class itself. The URL can be modified as needed to connect to the appropriate model endpoint:
   ```cpp
-  QUrl url("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent");
+  enum class RequestType {
+      ChatMessage,      // Chat message request
+      TitleGeneration,  // Title generation request
+      Rewrite,          // Rewrite request
+      ImageGeneration   // Image generation request
+  };
   ```
 
-### 4.2. Conversation Management
-- **Local Chat History Saving**: Conversations are saved locally in a `chathistory.json` file, ensuring persistence across application sessions.
-- **Conversation Loading**: Upon startup, the application loads previous conversations from `chathistory.json` and displays them in a list view.
-- **New Chat Initiation**: Users can start new conversations, clearing the current chat view and preparing for a fresh interaction.
-- **Conversation Selection**: Users can select and review past conversations from the chat history list.
-- **Dynamic Conversation Titles**: The AI can automatically generate concise and descriptive titles for new conversations based on the first user message.
+- **QMap<QNetworkReply*, RequestType> requestTypeMap:** Since network requests are asynchronous, when `QNetworkAccessManager` completes a request and emits the `finished` signal, it only returns a `QNetworkReply*` pointer. To identify the type of request corresponding to this reply, `GeminiClient` uses a `QMap` to store the mapping between `QNetworkReply*` and its corresponding `RequestType`. When sending a request, the reply pointer and request type are stored in this map.
 
-### 4.3. Context-Aware Responses
-- The AI client is designed to send the entire conversation history along with the new user input, enabling the AI to provide contextually relevant responses. This is managed by the `builtGeminiContents` function, which structures the conversation for the Gemini API.
+- **Unified Slot Function (onNetworkReplyFinished):** All `finished` signals from `QNetworkAccessManager` are connected to the `GeminiClient::onNetworkReplyFinished` slot function. When any network reply is received, this function performs the following operations:
+  1. Looks up the corresponding `RequestType` for the current `QNetworkReply*` from `requestTypeMap`.
+  2. Based on the obtained `RequestType`, parses different JSON response structures (e.g., text responses have a `candidates` field, image responses have a `predictions` field).
+  3. Based on the parsed result and request type, emits corresponding signals (such as `aiResponseReceived()`, `titleGenerated()`, `rewritedContentReceived()`, or `imageGenerated()`) to pass the processed data to the `MainWindow`.
+  4. After processing, removes the entry for this reply from `requestTypeMap` and safely deletes the `QNetworkReply` object.
 
-### 4.4. Text Rewriting Functionality
-- Users can send requests to the AI to rewrite specified text, with an option to include specific demands for the rewriting style. This functionality is exposed through the `sendRewriteRequest` method.
-- **Potential Market**: The rewrite functionality has significant potential for market growth, particularly when integrated into tools like Chrome or Outlook. This would provide automatic text detection and rewriting, offering considerable help to those who frequently engage in email communications, making their writing process more efficient and polished.
+This design pattern greatly enhances the scalability and maintainability of the code. When new AI request types need to be added, simply add a new item in the `RequestType` enum and extend the parsing and signal-emitting logic in `onNetworkReplyFinished`, without needing to create new network request handling functions.
 
-### 4.5. User Interface (UI)
-- Basic Qt-based UI with a chat history list view and a main display area for conversation.
-- Dynamically adjusts chat text color based on the system's theme (light/dark mode) for better readability.
-- Provides visual feedback during AI processing by disabling the send button.
-- Error handling for network issues and AI response parsing, displaying user-friendly messages.
+### GPTClient (Specific AI Implementation)
+Similar to `GeminiClient`, used to implement the interaction logic with the OpenAI GPT API.
 
-## 5. Gemini API Request Structure
+### MainWindow (UI and Application Logic)
+Manages the main application window, UI elements, and overall application flow. It is responsible for:
+- Setting up UI elements (e.g., chat history list, text display area).
+- Initializing and connecting signals/slots to different AI clients.
+- Loading and saving chat history to local JSON files.
+- Displaying user and AI messages (including images) in the chat interface.
+- Handling user input and triggering AI requests.
+- Updating the UI based on AI responses and managing the conversation state.
 
-The GeminiClient class constructs the JSON payload sent to the Gemini API based on different request types.
+### Qt Framework
+Used to build the cross-platform desktop application, providing powerful UI, networking, and data handling capabilities.
 
-### 5.1. Chat Message (sendMessage)
 
-This is the JSON format sent to the API when requesting a conversation response:
+## 4. Local JSON Structure (chathistory.json)
+The application stores all conversation history in a JSON file named `chathistory.json`. Its structure is as follows:
+
+```json
+{
+  "conversations": [
+    {
+      "title": "Conversation Title 1",
+      "dialogue": [
+        {
+          "user": "User Message 1",
+          "ai": "AI Response 1"
+        },
+        {
+          "user": "User Message 2",
+          "ai": "AI Response 2"
+        }
+      ]
+    },
+    {
+      "title": "Conversation Title 2",
+      "dialogue": [
+        {
+          "user": "User Message A",
+          "ai": "AI Response A"
+        }
+      ]
+    }
+  ]
+}
+```
+
+- **conversations:** A JSON array containing all individual conversations.
+- Each conversation is an object containing:
+  - **title:** The string title of the conversation.
+  - **dialogue:** A JSON array containing the conversation turns.
+- Each conversation turn is an object containing:
+  - **user:** The string message from the user.
+  - **ai:** The string response from the AI.
+
+## 5. API Requests and Response Structures
+This section shows examples of the JSON structures used when communicating with the AI models.
+
+### 5.1. Text Message Request (sendMessage)
+Used to send a user message and retrieve the AI response. The `contents` array includes the entire conversation history to provide context.
 
 ```json
 {
@@ -125,7 +127,7 @@ This is the JSON format sent to the API when requesting a conversation response:
       "role": "user",
       "parts": [
         {
-          "text": "User historical message 1"
+          "text": "User Historical Message 1"
         }
       ]
     },
@@ -133,7 +135,7 @@ This is the JSON format sent to the API when requesting a conversation response:
       "role": "model",
       "parts": [
         {
-          "text": "AI historical response 1"
+          "text": "AI Historical Response 1"
         }
       ]
     },
@@ -141,54 +143,123 @@ This is the JSON format sent to the API when requesting a conversation response:
       "role": "user",
       "parts": [
         {
-          "text": "Current user input"
+          "text": "Current User Input"
         }
       ]
     }
   ],
   "generationConfig": {
-    "temperature": 0.3 // Adjusts randomness of the generated response
+    "temperature": 0.3 // Optional, used to control the randomness of generated text
   }
 }
 ```
 
-### 5.2. API Response Format
+### 5.2. Image Generation Request (requestImageGeneration)
+Used to request AI to generate an image. The `instances` array contains the image description.
 
-The API response comes in this format, which contains the generated AI response:
+```json
+{
+  "instances": [
+    {
+      "prompt": "Image description, e.g., a cat chasing a butterfly on the grass"
+    }
+  ],
+  "parameters": {
+    "sampleCount": 1 // Number of images to generate
+  }
+}
+```
 
+### 5.3. API Response Format
+API responses typically contain the generated AI text or Base64-encoded image data.
+
+Text Response Example:
 ```json
 {
   "candidates": [
     {
       "content": {
-        "role": "model", // Typically "model" as the AI generates the response
+        "role": "model",
         "parts": [
           {
             "text": "This is the AI-generated response text"
           }
         ]
       },
-      "finishReason": "STOP", // Reason the generation stopped (e.g., "STOP" when done)
-      "index": 0 // Index of the response in case there are multiple options
+      "finishReason": "STOP",
+      "index": 0
     }
   ]
 }
 ```
 
-## 6. Known Limitations
+Image Response Example:
+```json
+{
+  "predictions": [
+    {
+      "bytesBase64Encoded": "Base64 encoded image data string"
+    }
+  ]
+}
+```
 
-- **Windows API for Auto Text Detection**: Currently, the tool requires manual copying of text for rewrite functionality. Using Windows API to automatically detect text fields would streamline the process.
-- **Asynchronous Processing**: To improve responsiveness, asynchronous handling of new chats could be implemented where the title is retrieved first, followed by the conversation content.
+## 6. Usage Instructions
 
-## 7. Future Enhancements
+### 6.1. Development Environment
+- **Qt Version:** 6.9.1
+- **Compiler:** MSVC x64
+- **Build System:** CMake
 
-- **Clipboard Detection for Auto-Rewrite Suggestions**: Potentially integrate this tool into applications like Chrome or Outlook for automatic text detection and rewriting. This can be highly beneficial for users who often communicate via email.
-- **Image Generation Integration**
-- **UI/UX Improvements**
-- **Audio Recognition**
-- **User Feedback and Iteration**
-- **Text Formatting Beautification**: Enhance the formatting of the AI's responses, which are currently raw text, by improving visual presentation for readability.
+### 6.2. How to Open and Build the Project
+1. Install Qt 6.9.1: Ensure that you have Qt 6.9.1 and the MSVC x64 compiler components installed.
+2. Open the Project:
+   - Open Qt Creator.
+   - Select "Open Project."
+   - Navigate to your project directory and select the `CMakeLists.txt` file.
+3. Configure CMake:
+   - After opening the project in Qt Creator, make sure the following line is enabled in the `CMakeLists.txt` file to display the application icon correctly:
+     ```cmake
+     set(CMAKE_AUTO_RCC ON)
+     ```
+   - Qt Creator should automatically configure the build. If needed, manually run CMake.
+4. Build the Project:
+   - In Qt Creator, click the "Build" menu -> "Build Project" (usually Ctrl+B).
 
-## 8. Conclusion
+### 6.3. API Key Configuration
+For security reasons, API keys should not be hard-coded into the application. This application uses an INI format configuration file to store the API key.
 
-The AI Desktop Tool has a solid foundation with essential AI interaction features. The planned enhancements will significantly expand its utility, transforming it into a more powerful and user-friendly MVP.
+1. Create the `config.ini` file:
+   - In your project build output directory (e.g., `build-YourProjectName-Desktop_Qt_6_x_x_MSVC_64_bit-Debug` or `Release` folder), create a text file named `config.ini`.
+   - Open `config.ini` with a text editor and add the following content:
+     ```ini
+     [API]
+     GeminiKey=YOUR_ACTUAL_GEMINI_API_KEY_HERE
+     GPTKey=YOUR_ACTUAL_GPT_API_KEY_HERE
+     ```
+2. In the application, during startup, `MainWindow::GeminiSetup()` and `MainWindow::GPTSetup()` (assuming you have similar GPT setup functions) will use `QSettings` to read these keys from `config.ini`. If the keys are empty or still placeholders, the application will display a warning dialog to prompt the user.
+
+### 6.4. Running the Application
+1. After building: After successfully building the project, you will find the executable file (.exe) in the build directory.
+2. Place the Configuration Files: To enable the application to load and save chat history and read the API keys, the built `.exe` file must be in the same directory as the `chathistory.json` and `config.ini` files.
+3. Run: Double-click the executable file to run the application.
+
+## 7. Known Limitations
+- **Dialogue Display Issue:** The current dialogue display mechanism (using `QVector<QVector<QPair<QString, QString>>>` to store data and render during display) may have display issues with incomplete rendering. This requires further optimization.
+- **Image Generation Model Availability:**
+  - The Gemini image generation model (e.g., `imagen-3.0-generate-002`) may currently be closed or restricted, making it unusable for testing.
+  - OpenAI's image generation service (e.g., DALL-E) may not be accessible due to network issues (such as regional access restrictions or firewalls).
+- **Windows API Automatic Text Detection:** The rewriting function currently requires manual text copying. Integrating Windows API for automatic text field detection would simplify the process.
+- **Asynchronous Processing Optimization:** To improve response speed, consider optimizing the processing of new chats asynchronously, such as retrieving the title first before loading the conversation content.
+
+## 8. Future Enhancements
+- **Clipboard Detection for Automatic Rewrite Suggestions:** Potentially integrate this tool into applications like Chrome or Outlook for automatic text detection and rewriting. This would be useful for users who communicate frequently via email.
+- **UI/UX Improvements:**
+  - Enhance the application's visual appeal and usability, potentially including more modern design elements, custom themes, and improved responsiveness.
+  - Improve chat message styling to enhance readability and differentiation between user and AI messages.
+  - Implement user settings for API key management and other preferences.
+- **Audio Recognition:** Integrate audio recognition features, potentially allowing voice input or transcription of spoken content.
+- **User Feedback and Iteration:** Collect user feedback to prioritize and refine future features, ensuring the tool effectively meets user needs.
+
+## 9. Conclusion
+The AI desktop tool has laid a solid foundation with its basic AI interaction capabilities. By integrating the GPT and Gemini models, implementing conversation management, and offering text rewriting, it has become a powerful MVP. Although there are some known limitations, future enhancement plans will make it a more comprehensive and user-friendly tool.

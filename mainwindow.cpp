@@ -19,21 +19,23 @@
 #include <QTextToSpeech>
 #include <QBuffer>
 #include <QKeyEvent>
+#include <QLabel>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QPalette>
+#include <QSettings>
+#include <QGroupBox>
 #include "geminiclient.h"
 #include "chatgptclient.h"
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
+    , ui(new Ui::MainWindow),clipboardMonitorTimer(nullptr)
 {
     ui->setupUi(this);
     UISetup();
+    loadQSS();
     setupEventFilter();
-    //GeminiSetup();
     ChatGPTSetup();
-    //rewrite detection tool
-    QClipboard* clipboard=QApplication::clipboard();
-    previousClipboardText=clipboard->text();
-    startClipboardMonitoring();
 }
 
 MainWindow::~MainWindow()
@@ -41,6 +43,11 @@ MainWindow::~MainWindow()
     saveChatHistory();
     delete popup;
     delete ui;
+    conversationHistoriesVector.clear();
+    if(clipboardMonitorTimer){
+        clipboardMonitorTimer->stop(); // make sure the timer stopped
+        delete clipboardMonitorTimer;
+    }
 }
 
 
@@ -88,32 +95,36 @@ void MainWindow::loadChatHistory(QStandardItemModel *model)
     //loop to get data
     int i=0;
     for(const QJsonValue& value:obj["conversations"].toArray()){
-        //get individual conversations
+        //stores the whole chat
+        QVector<QPair<QString, QString>> currentConversationData;        //get individual conversations
         QJsonObject chatObject=value.toObject();
         //get title
         QString chatTitle=chatObject["title"].toString();
         QStandardItem* item=new QStandardItem(chatTitle);
         item->setData(i,Qt::UserRole+1);// save the index!!!
-        i++;
+
         model->appendRow(item); //add conversation title to list view
 
         //get dialog
         QJsonArray dialogArray=chatObject["dialogue"].toArray();
-        QString content;
-        QString textColor=getTextColorBasedOnTheme();
         for(const QJsonValue& dialogValue:dialogArray ){
+
             //add dialog to main page
             QString userMessage=dialogValue["user"].toString();
             QString AIMessage=dialogValue["ai"].toString();
 
-            // Format as HTML, add to content
-            content += "<div style='text-align:right; color:"+textColor+";'><b>User:</b> " + userMessage + "</div><br>";
-            content += "<div style='text-align:left; color:"+textColor+";'><b>AI:</b> " + AIMessage + "</div><br><br>";
-            item->setData(content,Qt::UserRole);
+            currentConversationData.push_back(qMakePair(userMessage,AIMessage));
+            // >>> text QLabel output <<<
+            qDebug() << "Loaded User Message (length " << userMessage.length() << "): " << userMessage.left(200) << (userMessage.length() > 200 ? "..." : "");
+            qDebug() << "Loaded AI Message (length " << AIMessage.length() << "): " << AIMessage.left(200) << (AIMessage.length() > 200 ? "..." : "");
+            item->setData(currentConversationData.size(),Qt::UserRole);
         }
+
+
+        conversationHistoriesVector.push_back(currentConversationData);
+        i++;
     }
 }
-
 //change the conversation text color base on windows theme
 QString MainWindow::getTextColorBasedOnTheme()
 {
@@ -124,6 +135,15 @@ QString MainWindow::getTextColorBasedOnTheme()
     }
     else{
         return "black";
+    }
+}
+
+void MainWindow::loadQSS()
+{
+    QFile file(":/style/style.qss");  // make sure the path is correct
+    if (file.open(QFile::ReadOnly)) {
+        QString styleSheet = file.readAll();
+        qApp->setStyleSheet(styleSheet);  // apply qss
     }
 }
 
@@ -141,24 +161,71 @@ void MainWindow::saveChatHistory()
     chatHistoryDocument.close();
 }
 
+QLabel *MainWindow::returnUserLabel(const QString &message)
+{
+    QLabel* label = new QLabel(this);
+    label->setObjectName("userMessage");
+    label->adjustSize();
+    label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    label->setText("<b>User:</b> " + message);
+    label->setWordWrap(true); // Ensure text wraps
+    return label;
+}
+
+QLabel *MainWindow::returnAILabel(const QString &message)
+{
+    QLabel* label = new QLabel(this);
+    label->setObjectName("aiMessage");
+    label->adjustSize();
+    label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    label->setText("<b>AI:</b> " + message);
+    label->setWordWrap(true); // Ensure text wraps
+    return label;
+}
+
 void MainWindow::displayUserMessage(const QString &message)
 {
-    QString textColor=getTextColorBasedOnTheme();
-    ui->AIResponse->append("<div style='text-align:right; color:"+textColor+";'><b>User:</b> " + message + "</div><br>");
+    QLabel* userMessageLabel=returnUserLabel(message);
+    vBoxLayout_ChatHistory->addWidget(userMessageLabel, 0, Qt::AlignRight); // Align to the right(user)
 }
 
 void MainWindow::displayAIMessage(const QString &message)
 {
-    QString textColor=getTextColorBasedOnTheme();
-    ui->AIResponse->append("<div style='text-align:left; color:"+textColor+";'><b>AI:</b> " + message + "</div><br><br>");
+    QLabel* AIMessageLabel=returnAILabel(message);
+    vBoxLayout_ChatHistory->addWidget(AIMessageLabel, 0, Qt::AlignLeft); // Align to the left(AI)
+}
+
+
+void MainWindow::deleteVBoxChildren()
+{
+    QLayoutItem *item;
+    while ((item = vBoxLayout_ChatHistory->takeAt(0)) != nullptr) {
+        delete item->widget(); // Delete the widget owned by the layout item
+        delete item;          // Delete the layout item itself
+    }
 }
 
 //rewrite function related
 void MainWindow::startClipboardMonitoring()
 {
-    QTimer* timer=new QTimer(this);
-    connect(timer,&QTimer::timeout,this,&MainWindow::checkClipboard);
-    timer->start(1000); //check clipboard every 1 second
+    if (!clipboardMonitorTimer) { // Make sure only one timer object
+        clipboardMonitorTimer = new QTimer(this);
+        connect(clipboardMonitorTimer, &QTimer::timeout, this, &MainWindow::checkClipboard);
+    }
+    if(!clipboardMonitorTimer->isActive()){
+        clipboardMonitorTimer->start(1000); // check clipboard every 1s
+        qDebug() << "Clipboard monitoring started.";
+    }
+}
+
+void MainWindow::stopClipboardMonitoring()
+{
+    if(clipboardMonitorTimer&&clipboardMonitorTimer->isActive()){
+        clipboardMonitorTimer->stop();
+        qDebug() << "Clipboard monitoring stopped.";
+    }
 }
 
 void MainWindow::showRewritePrompt(const QString &copiedText)
@@ -167,19 +234,58 @@ void MainWindow::showRewritePrompt(const QString &copiedText)
     //popup the widget offer rewrite choice
     popup=new QWidget();
     popup->setWindowFlags(Qt::ToolTip|Qt::FramelessWindowHint);
-    popup->setGeometry(mousePosition.x(),mousePosition.y(),200,100); //show the tool at the mouse position
+    popup->setAttribute(Qt::WA_TranslucentBackground);
+
+    // Set the window background color using QPalette::Window
+    QPalette palette = popup->palette();
+    palette.setColor(QPalette::Window, QColor(240, 244, 248));  // set winddow background color
+    popup->setAutoFillBackground(true);
+    popup->setPalette(palette);
+
+    // Create a vertical layout for the popup window
+    QVBoxLayout* popupLayout = new QVBoxLayout(popup);
+    popupLayout->setContentsMargins(5, 5, 5, 5); // Set the layout's padding to give the button a small space from the popup edge.
+    popupLayout->setSpacing(2); // Set the spacing between buttons to make them more compact
 
     QPushButton* rewriteButton=new QPushButton("Rewrite",popup);
     QPushButton* rewriteButtonWithPrompt=new QPushButton("Rewrite with prompt",popup);
-    rewriteButton->setGeometry(0,0,200,50);
-    rewriteButtonWithPrompt->setGeometry(0,50,200,50);
+    popupLayout->addWidget(rewriteButton);
+    popupLayout->addWidget(rewriteButtonWithPrompt);
+    rewriteButton->setFixedHeight(30);
+    rewriteButtonWithPrompt->setFixedHeight(30);
+    QString buttonStyle = R"(
+        QPushButton {
+            background-color: #f0f0f0;
+            color: #333333;
+            border: 1px solid #cccccc;
+            border-radius: 5px;
+            padding: 5px 10px;
+            font-size: 13px;
+            font-weight: normal;
+            icon-size: 18px 18px;
+        }
+        QPushButton:hover {
+            background-color: #e0e0e0;
+            border-color: #a0a0a0;
+        }
+        QPushButton:pressed {
+            background-color: #d0d0d0;
+        }
+    )";
+    // apply style to buttons
+    rewriteButton->setStyleSheet(buttonStyle);
+    rewriteButtonWithPrompt->setStyleSheet(buttonStyle);
     rewriteButton->setIcon(QIcon(":/icons/icons/magicwand.png"));
     rewriteButtonWithPrompt->setIcon(QIcon(":/icons/icons/magicwand.png"));
+    // Make the popup window automatically resize according to the content of its layout
+    popup->adjustSize();
+    // After resizing, move the popup window to the mouse position
+    popup->move(mousePosition.x(), mousePosition.y());
     connect(rewriteButton,&QPushButton::clicked,this,&MainWindow::rewriteText);
     connect(rewriteButtonWithPrompt,&QPushButton::clicked,this,&MainWindow::onRewriteWithPromptClicked);
 
     //hover 3s then close automatically
-    QTimer::singleShot(5000, popup, &QWidget::close);
+    QTimer::singleShot(3000, popup, &QWidget::close);
     popup->show();
 }
 
@@ -220,6 +326,19 @@ void MainWindow::onRewriteWithPromptClicked()
 
 void MainWindow::UISetup()
 {
+
+    this->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowMinimizeButtonHint | Qt::WindowCloseButtonHint | Qt::WindowSystemMenuHint);
+    // Set transparent background
+    this->setAttribute(Qt::WA_TranslucentBackground);
+
+    // Set the window background color
+    QPalette palette = this->palette();
+    palette.setColor(QPalette::Window, QColor(240, 244, 248));  // Set the window background color to light blue
+    this->setAutoFillBackground(true);
+    this->setPalette(palette);
+
+
+
     setWindowTitle("Desktop AI Tool");
     setWindowIcon(QIcon(":/icons/icons/mainIcon.png"));
     //create list for chat history
@@ -230,21 +349,114 @@ void MainWindow::UISetup()
     chatHistotySelectionModel=new QItemSelectionModel(chatHistoryModel);
     chatHistoryList->setModel(chatHistoryModel);
     chatHistoryList->setSelectionModel(chatHistotySelectionModel);
-    QVBoxLayout* vBoxLayout=new QVBoxLayout(this);
-    vBoxLayout->addWidget(chatHistoryList,Qt::AlignBottom|Qt::AlignLeft);
-    chatHistoryList->setMinimumSize(200, 400); // Set the minimum width to 300 and the height to 400
+    chatHistoryList->setSpacing(10);
+    QVBoxLayout* vBoxLayout_listview=new QVBoxLayout(this);
+    vBoxLayout_listview->addWidget(chatHistoryList, Qt::AlignTop | Qt::AlignLeft);
+    vBoxLayout_listview->setContentsMargins(15, 15, 15, 15);
+    vBoxLayout_listview->setSpacing(5);
+
+    chatHistoryList->setMinimumSize(280, 400); // Set the minimum width to 300 and the height to 400
+
+    //Create a new VBox to hold the dialog label
+    ui->groupBox_functionalArea->setStyleSheet("QGroupBox { border: none; }");
+    ui->groupBox_chatBox->setStyleSheet("QGroupBox { border: none; }");
+
+    vBoxLayout_ChatHistory=new QVBoxLayout(this);
+    vBoxLayout_ChatHistory->setAlignment(Qt::AlignTop);
+    vBoxLayout_ChatHistory->addSpacing(5);
+
+    //Create a QWidget to hold the message and set the QVBoxLayout to it
+    QWidget* messagesContainerWidget = new QWidget();
+    messagesContainerWidget->setLayout(vBoxLayout_ChatHistory);
+
+    //Creating the scrollarea
+    chatScrollArea=new QScrollArea(this);
+    chatScrollArea->setWidgetResizable(true);
+    chatScrollArea->setWidget(messagesContainerWidget);
+    chatScrollArea->setFrameShape(QFrame::NoFrame);
+
+    ui->groupBox_chatBox->setLayout(new QVBoxLayout());
+    ui->groupBox_chatBox->layout()->addWidget(chatScrollArea);
+    ui->groupBox_chatBox->layout()->setContentsMargins(0,0,0,0);
+
+    QVBoxLayout* rightPaneLayout =new QVBoxLayout(this);
+    rightPaneLayout ->addWidget(ui->groupBox_chatBox);
+    rightPaneLayout ->addWidget(ui->groupBox_functionalArea);
+    QGroupBox* chatBox=new QGroupBox(this);
+    chatBox->setLayout(rightPaneLayout);
+
+    // QSplitter
+    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->addWidget(chatHistoryList); // Add chat history list to splitter
+    splitter->addWidget(chatBox); // Adding a chat area to splitter
+    setCentralWidget(splitter);
     loadChatHistory(chatHistoryModel); //load chat history to listview
+
+    //create a closebutton and a hidebutton
+    closeButton = new QPushButton(this);
+    closeButton->setFixedSize(30, 30);
+    closeButton->setIcon(QIcon(":/icons/icons/close.png"));
+    closeButton->setStyleSheet(
+        "QPushButton {"
+        "   background-color: #F0F4F8;"
+        "   color: white;"
+        "   border-radius: 15px;"
+        "   font-weight: bold;"
+        "   border: none;"
+        "   text-align: center;"
+        "   icon-size: 20px 20px; "
+        "}"
+        "QPushButton:hover {"
+        "   background-color: #e60000;"
+        "}"
+        );
+    connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
+
+    //create a hidebutton
+    hideButton = new QPushButton(this);
+    hideButton->setFixedSize(30, 30);
+    hideButton->setIcon(QIcon(":/icons/icons/hide.png"));
+    hideButton->setStyleSheet(
+        "QPushButton {"
+        "   background-color: #F0F4F8;"
+        "   color: white;"
+        "   border-radius: 15px;"
+        "   font-weight: bold;"
+        "   border: none;"
+        "   text-align: center;"
+        "   icon-size: 20px 20px; "
+        "}"
+        "QPushButton:hover {"
+        "   background-color: #0056b3;"
+        "}"
+        );
+    connect(hideButton, &QPushButton::clicked, this, &QWidget::hide);
 
     //show conversation
     connect(chatHistoryList,&QListView::clicked,this,&MainWindow::do_showChatHistory);
     connect(chatHistoryList,&QListView::doubleClicked,this,&MainWindow::do_showChatHistory);
+
 }
 
 void MainWindow::GeminiSetup()
 {
     //initialized Gemini client
     aiClient = new GeminiClient(this);
-    aiClient->setApiKey("sk-v371No7bdNaaTYY1SoItAVRDi7o6p71BsBqaml0ABGxMpRW8");
+    QSettings settings("config.ini", QSettings::IniFormat);
+    QString apiKey = settings.value("API/GeminiKey").toString();
+    if (apiKey.isEmpty() || apiKey == "YOUR_ACTUAL_GEMINI_API_KEY_HERE") {
+        // If Key is empty or still a placeholder, prompt the user
+        QMessageBox::warning(this, "API Key Missing",
+                             "Gemini API Key is not set or is invalid in config.ini.\n"
+                             "Please open 'config.ini' in the application directory and replace 'YOUR_ACTUAL_GEMINI_API_KEY_HERE' with your actual API Key.");
+        // To avoid program crashes, disabled related features or exit
+        ui->button_sendText->setEnabled(false); // Disable the Send Button
+        return;
+    } else {
+        aiClient->setApiKey(apiKey);
+        ui->button_sendText->setEnabled(true);
+        qDebug() << "Gemini API Key loaded from config.ini.";
+    }
     //connect Gemini slots
     connect(aiClient,&GeminiClient::aiResponseReceived,this,&MainWindow::handleAiResponse);
     connect(aiClient,&GeminiClient::titleGenerated,this,&MainWindow::handleTitleGenerated);
@@ -257,7 +469,19 @@ void MainWindow::GeminiSetup()
 void MainWindow::ChatGPTSetup()
 {
     aiClient=new ChatGPTClient(this);
-    aiClient->setApiKey("sk-v371No7bdNaaTYY1SoItAVRDi7o6p71BsBqaml0ABGxMpRW8");
+    QSettings settings("config.ini", QSettings::IniFormat);
+    QString apiKey = settings.value("API/ChatGPTKey").toString();
+    if (apiKey.isEmpty() || apiKey == "YOUR_ACTUAL_ChatGPT_API_KEY_HERE") {
+        QMessageBox::warning(this, "API Key Missing",
+                             "ChatGPT API Key is not set or is invalid in config.ini.\n"
+                             "Please open 'config.ini' in the application directory and replace 'YOUR_ACTUAL_ChatGPT_API_KEY_HERE' with your actual API Key.");
+        ui->button_sendText->setEnabled(false);
+        return;
+    } else {
+        aiClient->setApiKey(apiKey);
+        ui->button_sendText->setEnabled(true);
+        qDebug() << "ChatGPT API Key loaded from config.ini.";
+    }
     connect(aiClient,&ChatGPTClient::generatedImgReceived,this,&MainWindow::handlePicContent);
     connect(aiClient,&ChatGPTClient::aiResponseReceived,this,&MainWindow::handleAiResponse);
     connect(aiClient,&ChatGPTClient::titleGenerated,this,&MainWindow::handleTitleGenerated);
@@ -265,9 +489,10 @@ void MainWindow::ChatGPTSetup()
     connect(aiClient,&ChatGPTClient::rewritedContentReceived,this,&MainWindow::handleRewritedContent);
 }
 
+//user can press enter to send text
 void MainWindow::setupEventFilter()
 {
-    ui->UserInput->installEventFilter(this);  // 安装事件过滤器
+    ui->UserInput->installEventFilter(this);  // Install an event filter for the user input box
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
@@ -277,12 +502,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             QKeyEvent* keyEvent=static_cast<QKeyEvent*>(event);
             if(keyEvent->key()==Qt::Key_Enter|| keyEvent->key() == Qt::Key_Return){
                 if (keyEvent->modifiers() & Qt::ShiftModifier) {
-                    // 如果按下的是 Shift + Enter，允许换行
-                    return false;  // 返回 false，事件继续传递给 QPlainTextEdit，进行换行
+                    // If Shift+Enter is pressed, line break is allowed
+                    return false;  // Return false, the event continues to be passed to QPlainTextEdit for line wrapping
                 } else {
-                    // 否则，触发按钮点击
+                    // Otherwise, trigger a button click
                     ui->button_sendText->click();
-                    return true;  // 返回 true，表示事件已被处理
+                    return true;  // Return true, indicating that the event has been processed
                 }
             }
         }
@@ -296,19 +521,25 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 //slots begin here
 void MainWindow::do_showChatHistory(const QModelIndex &index)
 {
-    // //get conversation title
-    // QString dialogTitle=chatHistoryModel->data(index,Qt::DisplayRole).toString();
+    //get conversation title
 
     //get current conversation index
     currentConversationIndex=chatHistoryList->selectionModel()->currentIndex().row();
-    QString conversationContent=chatHistoryModel->itemFromIndex(index)->data(Qt::UserRole).toString();
-    QTextBrowser *textBrowser = ui->AIResponse;
-    textBrowser->setHtml(conversationContent);
-    qDebug()<<"current Index: "<<currentConversationIndex;
-    // if (currentConversationIndex != -1 && currentConversationIndex < allConversations.size()){
-    //     QJsonObject currentChatObject = allConversations.at(currentConversationIndex).toObject();
-    //     QJsonArray currentConversationHistory = currentChatObject["dialogue"].toArray();
-    // }
+    deleteVBoxChildren();
+    if (currentConversationIndex >= 0 && currentConversationIndex < conversationHistoriesVector.size()) {
+        QVector<QPair<QString,QString>> currentConversationDisplay = conversationHistoriesVector.at(currentConversationIndex);
+        for(const QPair<QString, QString>& dialogPair  : currentConversationDisplay){
+            // Add labels to the display layout with appropriate alignment
+            QLabel* userLabel=returnUserLabel(dialogPair.first);
+            QLabel* aiLabel=returnAILabel(dialogPair.second);
+            // >>> debug <<<
+            qDebug() << "Displaying User Message (length " << dialogPair.first.length() << "): " << dialogPair.first.left(200) << (dialogPair.first.length() > 200 ? "..." : "");
+            qDebug() << "Displaying AI Message (length " << dialogPair.second.length() << "): " << dialogPair.second.left(200) << (dialogPair.second.length() > 200 ? "..." : "");
+            displayUserMessage(dialogPair.first);
+            displayAIMessage(dialogPair.second);
+
+        }
+    }
 }
 
 void MainWindow::on_button_sendText_clicked()
@@ -317,6 +548,9 @@ void MainWindow::on_button_sendText_clicked()
     if(userInput.isEmpty()) return;
 
     displayUserMessage(userInput);//append the user's new text to browser
+    // After sending the message, let the scrollArea scroll to the bottom >>(Not working)<<
+    QScrollBar *scrollBar = chatScrollArea->verticalScrollBar();
+    scrollBar->setValue(scrollBar->maximum());  // Set the scroll bar value to the maximum value and scroll to the bottom
     ui->UserInput->clear();
     ui->button_sendText->setEnabled(false);
 
@@ -351,8 +585,8 @@ void MainWindow::on_button_newChat_clicked()
         return;
     }
     currentConversationIndex=-1;
-    ui->AIResponse->clear();
-    chatHistoryList->selectionModel()->select(chatHistoryList->selectionModel()->currentIndex(),QItemSelectionModel::Deselect);
+    deleteVBoxChildren();//Delete previous widgets
+    chatHistoryList->selectionModel()->clearSelection();
 }
 
 
@@ -360,9 +594,10 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
     if(!ui->button_sendText->isEnabled()){
         QMessageBox::warning(this,"Warning","Please wait the current chat is finished.");
+        event->ignore();
         return;
     }
-    event->ignore();
+    saveChatHistory();
     this->hide(); //hide window
 }
 //Ai slots
@@ -370,6 +605,9 @@ void MainWindow::handleAiResponse(const QString &response)
 {
     qDebug() << "AI Response Received: " << response; // Add this debug line to verify the response.
     displayAIMessage(response);
+    // scroll to buttom(not working)
+    QScrollBar *scrollBar = chatScrollArea->verticalScrollBar();
+    scrollBar->setValue(scrollBar->maximum());
     ui->button_sendText->setEnabled(true);
 
     //sync the local json file
@@ -404,18 +642,31 @@ void MainWindow::handleAiResponse(const QString &response)
         allConversations.replace(currentConversationIndex,currentChat);
 
         //update the data in model
-        QString content;
+        QJsonObject lastEntry = chatArray[chatArray.size()-1].toObject();
+
+        // Get the "user" and "ai" fields
+        QString userMsg = lastEntry["user"].toString();
+        QString aiMsg = lastEntry["ai"].toString();
+
         QStandardItem* item=chatHistoryModel->item(currentConversationIndex);
-        QString color=getTextColorBasedOnTheme();
-        for(const QJsonValue& value:chatArray){
-            QString userMessage=value["user"].toString();
-            QString aiMessage=value["ai"].toString();
-            content += "<div style='text-align:right; color:"+color+";'><b>User:</b> " + userMessage + "</div><br>";
-            content += "<div style='text-align:left; color:"+color+";'><b>AI:</b> " + aiMessage + "</div><br><br>";
+        currentConversationIndex=chatHistoryList->selectionModel()->currentIndex().row();
+        QVector<QPair<QString,QString>> currentConversationHistory=conversationHistoriesVector.at(currentConversationIndex);
+        if(currentConversationIndex!=-1&&currentConversationIndex < conversationHistoriesVector.size()){
+            conversationHistoriesVector[currentConversationIndex].append(qMakePair(userMsg,aiMsg));
+        } else {
+            QVector<QPair<QString,QString>> newChatHistory;
+            newChatHistory.append(qMakePair(userMsg,aiMsg));
+            conversationHistoriesVector.append(newChatHistory);
         }
-        item->setData(content,Qt::UserRole);
-        ui->AIResponse->setHtml(content);
+        //debug
+        int size=conversationHistoriesVector.at(conversationHistoriesVector.size()-1).size();
+        QPair<QString,QString> lastChat=conversationHistoriesVector.at(conversationHistoriesVector.size()-1).at(size-1);
+        qDebug() << "Stored User Message in vector (length " << lastChat.first.length() << "): " << lastChat.first.left(200) << (lastChat.first.length() > 200 ? "..." : "");
+        qDebug() << "Stored AI Message in vector (length " << lastChat.second.length() << "): " << lastChat.second.left(200) << (lastChat.second.length() > 200 ? "..." : "");
+        //debug
+        item->setData(currentConversationHistory.size(),Qt::UserRole);
     }
+    ui->button_sendText->setEnabled(true);
     saveChatHistory();
 }
 
@@ -445,11 +696,12 @@ void MainWindow::handleTitleGenerated(const QString &title)
 
     //make sure displays the new chat
     chatHistoryList->setCurrentIndex(chatHistoryModel->indexFromItem(item));
-    ui->AIResponse->clear();
-    displayUserMessage(userInput);
+    // Initialize conversationHistoriesVector for this new conversation and add an empty QVector<QPair<QString, QString>>
+    conversationHistoriesVector.append(QVector<QPair<QString, QString>>());
 
     //send message
-    QJsonArray chatArray=allConversations.at(currentConversationIndex).toArray();
+    QJsonObject currentChatObject = allConversations.at(currentConversationIndex).toObject();
+    QJsonArray chatArray = currentChatObject["dialogue"].toArray();
     if(ui->checkBox_imgGen->isChecked()){
         aiClient->sendPicGenerationRequest(userInput);
         ui->checkBox_imgGen->setEnabled(false);
@@ -466,30 +718,20 @@ void MainWindow::handleRewritedContent(const QString &rewritedContent)
 {
     QClipboard *clipboard = QApplication::clipboard();
     clipboard->setText(rewritedContent);//paste the rewritedContent to clipboard
-    //debug
-    QMessageBox::information(this, "Text Copied", "The rewritten text has been copied to the clipboard!");
-    QTextToSpeech *speech = new QTextToSpeech();
-    speech->say("rewrite complete");
+    QApplication::beep();//notify user task has done
 }
 
 void MainWindow::handlePicContent(const QPixmap &image)
 {
-    // 将 QPixmap 转换为 Base64 编码的字符串
-    QByteArray byteArray;
-    QBuffer buffer(&byteArray);
-    buffer.open(QIODevice::WriteOnly);
-    //save as png
-    image.save(&buffer,"PNG");
-    QString base64Image=byteArray.toBase64();
+    // Add HTML to QTextBrowser (previous solution, deprecated)
 
-    QString textColor=getTextColorBasedOnTheme();
-
-    QString htmlImg=QString("<div style='text-align:center; color:%1;'><b>Generated Image:</b></div><br>"
-                              "<div style='text-align:center;'><img src='data:image/png;base64,%2' style='max-width:100%%; height:auto; border: 1px solid gray; border-radius: 8px;'/></div><br><br>")
-                          .arg(textColor)
-                          .arg(base64Image);
-    // 将 HTML 添加到 QTextBrowser
-    ui->AIResponse->append(htmlImg);
+    QLabel* labelPic=new QLabel(this);
+    labelPic->setObjectName("aiMessage");
+    labelPic->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    labelPic->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    labelPic->setText("<b>AI:</b> ");
+    labelPic->setWordWrap(true); //
+    labelPic->setPixmap(image);
 
     ui->button_sendText->setEnabled(true);
 
@@ -523,3 +765,51 @@ void MainWindow::on_comboBox_currentIndexChanged(int index)
     }
 }
 
+//virtual functions
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+    if( (event->button()== Qt::LeftButton)){
+        mouse_press = true;
+        mousePoint = event->globalPos() - this->pos();
+        event->accept();
+    }
+        else if(event->button() == Qt::RightButton){
+            this->close();
+        }
+
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+    mouse_press=false;
+}
+
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+    if(event->buttons() == Qt::LeftButton){
+        if(mouse_press){
+            move(event->globalPos() - mousePoint);
+            event->accept();
+        }
+    }
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event); //Call the base class implementation
+
+    if (closeButton && hideButton) { // Make sure both buttons are present
+        int margin = 10; // Margin from the edge of the window
+        int buttonSpacing = 5; // The distance between two buttons
+
+        // 1. closeButton
+        int closeButtonX = this->width() - closeButton->width() - margin;
+        int buttonY = margin;
+
+        closeButton->move(closeButtonX, buttonY);
+
+        // 2. hideButton
+        int hideButtonX = closeButtonX - hideButton->width() - buttonSpacing;
+        hideButton->move(hideButtonX, buttonY);
+    }
+}

@@ -6,163 +6,268 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>787</width>
+    <height>607</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
+  <property name="layoutDirection">
+   <enum>Qt::LayoutDirection::LeftToRight</enum>
+  </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QPlainTextEdit" name="UserInput">
+   <widget class="QGroupBox" name="groupBox_chatBox">
     <property name="geometry">
      <rect>
-      <x>270</x>
-      <y>310</y>
-      <width>500</width>
-      <height>111</height>
+      <x>60</x>
+      <y>80</y>
+      <width>600</width>
+      <height>261</height>
      </rect>
     </property>
     <property name="minimumSize">
      <size>
-      <width>500</width>
-      <height>100</height>
+      <width>600</width>
+      <height>0</height>
      </size>
+    </property>
+    <property name="title">
+     <string/>
     </property>
    </widget>
    <widget class="QTextBrowser" name="AIResponse">
     <property name="geometry">
      <rect>
-      <x>270</x>
-      <y>10</y>
-      <width>500</width>
-      <height>300</height>
+      <x>450</x>
+      <y>120</y>
+      <width>1</width>
+      <height>1</height>
      </rect>
     </property>
     <property name="minimumSize">
      <size>
-      <width>500</width>
-      <height>300</height>
+      <width>1</width>
+      <height>1</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>1</width>
+      <height>1</height>
      </size>
     </property>
    </widget>
-   <widget class="QPushButton" name="button_sendText">
+   <widget class="QGroupBox" name="groupBox_functionalArea">
     <property name="geometry">
      <rect>
-      <x>660</x>
-      <y>510</y>
-      <width>100</width>
-      <height>18</height>
+      <x>60</x>
+      <y>380</y>
+      <width>600</width>
+      <height>175</height>
      </rect>
     </property>
     <property name="minimumSize">
      <size>
-      <width>100</width>
+      <width>600</width>
       <height>0</height>
      </size>
     </property>
-    <property name="text">
-     <string>Send</string>
+    <property name="maximumSize">
+     <size>
+      <width>16777215</width>
+      <height>250</height>
+     </size>
     </property>
-    <property name="icon">
-     <iconset>
-      <normaloff>icons/sendIcon.png</normaloff>icons/sendIcon.png</iconset>
+    <property name="title">
+     <string/>
     </property>
+    <layout class="QGridLayout" name="gridLayout">
+     <item row="0" column="0">
+      <widget class="QComboBox" name="comboBox">
+       <property name="minimumSize">
+        <size>
+         <width>150</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>100</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="layoutDirection">
+        <enum>Qt::LayoutDirection::LeftToRight</enum>
+       </property>
+       <item>
+        <property name="text">
+         <string>ChatGPT</string>
+        </property>
+        <property name="icon">
+         <iconset resource="resource.qrc">
+          <normaloff>:/icons/icons/chatgpt.png</normaloff>:/icons/icons/chatgpt.png</iconset>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Google Gemini</string>
+        </property>
+        <property name="icon">
+         <iconset resource="resource.qrc">
+          <normaloff>:/icons/icons/Gemini.png</normaloff>:/icons/icons/Gemini.png</iconset>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QPlainTextEdit" name="UserInput">
+       <property name="minimumSize">
+        <size>
+         <width>500</width>
+         <height>100</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>100</height>
+        </size>
+       </property>
+       <property name="accessibleDescription">
+        <string/>
+       </property>
+       <property name="placeholderText">
+        <string>Type your thoughts here...</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="0">
+      <layout class="QHBoxLayout" name="horizontalLayout">
+       <item>
+        <widget class="QCheckBox" name="checkBox_imgGen">
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Image generation</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <property name="sizeType">
+          <enum>QSizePolicy::Policy::Ignored</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>58</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QPushButton" name="button_newChat">
+         <property name="minimumSize">
+          <size>
+           <width>150</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>new chat</string>
+         </property>
+         <property name="icon">
+          <iconset resource="resource.qrc">
+           <normaloff>:/icons/icons/chaticon.png</normaloff>:/icons/icons/chaticon.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_2">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <property name="sizeType">
+          <enum>QSizePolicy::Policy::Ignored</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>58</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QPushButton" name="button_sendText">
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="layoutDirection">
+          <enum>Qt::LayoutDirection::LeftToRight</enum>
+         </property>
+         <property name="text">
+          <string>Send</string>
+         </property>
+         <property name="icon">
+          <iconset resource="resource.qrc">
+           <normaloff>:/icons/icons/sendIcon.png</normaloff>:/icons/icons/sendIcon.png</iconset>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
    </widget>
-   <widget class="QPushButton" name="button_newChat">
+   <widget class="QPushButton" name="button_close">
     <property name="geometry">
      <rect>
-      <x>550</x>
-      <y>510</y>
-      <width>100</width>
+      <x>700</x>
+      <y>0</y>
+      <width>80</width>
       <height>18</height>
      </rect>
     </property>
-    <property name="minimumSize">
-     <size>
-      <width>100</width>
-      <height>0</height>
-     </size>
-    </property>
     <property name="text">
-     <string>new chat</string>
+     <string>关闭</string>
     </property>
     <property name="icon">
      <iconset resource="resource.qrc">
-      <normaloff>:/icons/icons/chaticon.png</normaloff>:/icons/icons/chaticon.png</iconset>
+      <normaloff>:/icons/icons/close.png</normaloff>:/icons/icons/close.png</iconset>
     </property>
-   </widget>
-   <widget class="QCheckBox" name="checkBox_imgGen">
-    <property name="geometry">
-     <rect>
-      <x>660</x>
-      <y>540</y>
-      <width>100</width>
-      <height>17</height>
-     </rect>
-    </property>
-    <property name="minimumSize">
-     <size>
-      <width>100</width>
-      <height>0</height>
-     </size>
-    </property>
-    <property name="text">
-     <string>Image generation</string>
-    </property>
-   </widget>
-   <widget class="QComboBox" name="comboBox">
-    <property name="geometry">
-     <rect>
-      <x>350</x>
-      <y>490</y>
-      <width>100</width>
-      <height>22</height>
-     </rect>
-    </property>
-    <property name="minimumSize">
-     <size>
-      <width>100</width>
-      <height>0</height>
-     </size>
-    </property>
-    <property name="layoutDirection">
-     <enum>Qt::LayoutDirection::LeftToRight</enum>
-    </property>
-    <item>
-     <property name="text">
-      <string>ChatGPT</string>
-     </property>
-     <property name="icon">
-      <iconset resource="resource.qrc">
-       <normaloff>:/icons/icons/chatgpt.png</normaloff>:/icons/icons/chatgpt.png</iconset>
-     </property>
-    </item>
-    <item>
-     <property name="text">
-      <string>Google Gemini</string>
-     </property>
-     <property name="icon">
-      <iconset resource="resource.qrc">
-       <normaloff>:/icons/icons/Gemini.png</normaloff>:/icons/icons/Gemini.png</iconset>
-     </property>
-    </item>
    </widget>
   </widget>
-  <widget class="QMenuBar" name="menubar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>800</width>
-     <height>17</height>
-    </rect>
-   </property>
-  </widget>
-  <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources>
   <include location="resource.qrc"/>
  </resources>
- <connections/>
+ <connections>
+  <connection>
+   <sender>button_close</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>hide()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>739</x>
+     <y>8</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>393</x>
+     <y>303</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
 </ui>

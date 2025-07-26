@@ -6,5 +6,15 @@
         <file>icons/chatgpt.png</file>
         <file>icons/Gemini.png</file>
         <file>icons/sendIcon.png</file>
+        <file>icons/close.png</file>
+        <file>icons/hide.png</file>
+    </qresource>
+    <qresource prefix="/style">
+        <file>style.qss</file>
+    </qresource>
+    <qresource prefix="/demostration">
+        <file>img/rewriteDemo.gif</file>
+        <file>img/demo.png</file>
+        <file>img/AIModelSelect.png</file>
     </qresource>
 </RCC>
