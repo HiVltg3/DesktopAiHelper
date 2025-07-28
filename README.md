@@ -28,7 +28,7 @@ The user inputs a piece of text and specifies requirements like “make it more 
 ### 2.4. Text to image
 When you are in the conversation, check the Image generation below, and the program will return the JSON data of the image. (Please change the API yourself)
 
-![Image generation](:/demostration/img/ImgGeneration.png)
+![Image generation](img/ImgGeneration.png)
 
 
 ## 3. Technical Architecture
