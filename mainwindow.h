@@ -73,8 +73,11 @@ private: //functions
     void GeminiSetup();
     void ChatGPTSetup();
     void saveChatHistory(); // save chat history to local file
+    QWidget* createMessageBubble(const QString& htmlMessage,bool isUser);
+    QString plainTextToHtml(const QString& message);
     void displayUserMessage(const QString &message); // displays users new msg
     void displayAIMessage(const QString &message); // displays Ai's new msg
+    void displayAIMessage(const QPixmap& image);// displays Ai's pic
     QLabel* returnUserLabel(const QString &message);
     QLabel* returnAILabel(const QString &message);
     void deleteVBoxChildren();
@@ -83,6 +86,8 @@ private: //functions
 
     //install event filter for userinput
     void setupEventFilter();
+    void updateScrollArea();// 强制更新布局
+
     virtual bool eventFilter(QObject *watched, QEvent *event) override;
 public:
     //rewrite function related

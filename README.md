@@ -25,6 +25,12 @@ The user inputs a piece of text and specifies requirements like “make it more 
 
 ![Rewriting Feature GIF Demonstration, please replace the link](img/rewriteDemo.gif)
 
+### 2.4. Text to image
+When you are in the conversation, check the Image generation below, and the program will return the JSON data of the image. (Please change the API yourself)
+
+![Image generation](:/demostration/img/ImgGeneration.png)
+
+
 ## 3. Technical Architecture
 
 The application follows a clear separation of responsibilities and utilizes the following key components:

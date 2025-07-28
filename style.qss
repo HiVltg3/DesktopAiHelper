@@ -6,34 +6,68 @@ QWidget {
     border-radius: 30px;
 }
 
+/* ------------------------------------------- */
+/* 气泡容器 QWidget 的样式，用于实现背景和圆角  */
+/* ------------------------------------------- */
+QWidget#userMessageBubble {
+    background-color: #fff7e4;
+    border-radius: 10px;
+    margin-bottom: 5px;
+    padding: 8px; /* 这是气泡内的内边距，让文字与气泡边框有间隙 */
+    max-height: 30%;
+    min-width: 250px;
+
+}
+
+QWidget#aiMessageBubble {
+    background-color: #f5f5f5;
+    border-radius: 10px;
+    margin-bottom: 5px;
+    padding: 8px;
+    max-width: 80%;
+    min-width: 380px;
+}
+
+/* ------------------------------------------- */
+/* 气泡容器内的子控件样式                      */
+/* ------------------------------------------- */
+QWidget#userMessageBubble QTextEdit,
+QWidget#aiMessageBubble QTextEdit {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+QWidget#userMessageBubble QLabel,
+QWidget#aiMessageBubble QLabel {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+QWidget#userMessageBubble, QWidget#aiMessageBubble {
+    /* 左右留白 */
+    margin-left: 5px;
+    margin-right: 5px;
+
+}
+/* ------------------------------------------- */
+/* 其他通用的 UI 样式，请根据你的需求添加或修改  */
+/* ------------------------------------------- */
+QTextEdit {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    color: #333333;
+}
+
+/* 移除 QLabel 的样式，但保留通用的 QLabel 样式 */
 QLabel {
     font-family: Arial, sans-serif;
-    font-size: 14px;  /* 调整字体大小 */
-    padding: 8px;  /* 减小内边距 */
+    font-size: 14px;
+    padding: 2px;
     border-radius: 10px;
-    margin-bottom: 5px;  /* 减少消息框之间的间距 */
-}
-
-QLabel#userMessage {
-    background-color: #fff7e4;  /* 用户消息背景色 */
-    color: #295586;  /* 用户消息字体颜色 */
-    text-align: right;  /* 用户消息右对齐 */
-    font-weight: bold;  /* 用户消息字体加粗 */
-    display: inline-block;  /* 让消息框根据内容宽度自动调整 */
-    max-width: 300;  /* 限制最大宽度 */
-    margin-left: auto;  /* 向右对齐 */
-    margin-bottom: 5px;  /* 减少消息框之间的垂直间距 */
-}
-
-QLabel#aiMessage {
-    background-color: #f5f5f5;  /* AI 消息背景色 */
-    color: #507299;  /* AI 消息字体颜色 */
-    text-align: left;  /* AI 消息左对齐 */
-    font-weight: bold;  /* AI 消息字体加粗 */
-    display: inline-block;  /* 让消息框根据内容宽度自动调整 */
-    max-width: 300px;  /* 限制最大宽度 */
-    margin-right: auto;  /* 向左对齐 */
-    margin-bottom: 5px;  /* 减少消息框之间的垂直间距 */
+    margin-bottom: 5px;
 }
 
 

@@ -16,5 +16,6 @@
         <file>img/rewriteDemo.gif</file>
         <file>img/demo.png</file>
         <file>img/AIModelSelect.png</file>
+        <file>img/ImgGeneration.png</file>
     </qresource>
 </RCC>

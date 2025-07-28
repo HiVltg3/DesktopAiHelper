@@ -161,49 +161,107 @@ void MainWindow::saveChatHistory()
     chatHistoryDocument.close();
 }
 
-QLabel *MainWindow::returnUserLabel(const QString &message)
+
+// mainwindow.cpp
+
+QWidget* MainWindow::createMessageBubble(const QString& message, bool isUserMessage)
 {
-    QLabel* label = new QLabel(this);
-    label->setObjectName("userMessage");
-    label->adjustSize();
-    label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    label->setText("<b>User:</b> " + message);
-    label->setWordWrap(true); // Ensure text wraps
-    return label;
+    QWidget* bubbleContainer = new QWidget(this);
+    bubbleContainer->setObjectName(isUserMessage ? "userMessageBubble" : "aiMessageBubble");
+
+    QTextBrowser* textBrowser = new QTextBrowser();
+    // 确保传入的是 HTML 格式的文本
+    textBrowser->setHtml(plainTextToHtml(message));
+    textBrowser->setReadOnly(true);
+    textBrowser->setFrameShape(QFrame::NoFrame);
+    textBrowser->setWordWrapMode(QTextOption::WordWrap);
+
+    // **重要修正：确保滚动条不显示，并让高度自适应**
+    textBrowser->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    textBrowser->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    // **关键修正：让 QTextBrowser 的大小策略为自适应**
+    // 它的高度将由其内容决定，而不是被固定
+    textBrowser->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+
+    textBrowser->setMinimumWidth(100);
+    //textBrowser->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+
+    QTextDocument *doc = textBrowser->document();
+    doc->setTextWidth(textBrowser->width());
+    textBrowser->setMinimumHeight(doc->size().height());
+
+
+    QVBoxLayout* layout = new QVBoxLayout(bubbleContainer);
+    layout->addWidget(textBrowser);
+    //layout->setContentsMargins(10, 10, 10, 10);
+
+
+    return bubbleContainer;
 }
 
-QLabel *MainWindow::returnAILabel(const QString &message)
+QString MainWindow::plainTextToHtml(const QString &message)
 {
-    QLabel* label = new QLabel(this);
-    label->setObjectName("aiMessage");
-    label->adjustSize();
-    label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    label->setText("<b>AI:</b> " + message);
-    label->setWordWrap(true); // Ensure text wraps
-    return label;
+    QString html = message;
+    html.replace("\n", "<br>");
+    // 示例：将 --- 替换为水平线
+    html.replace("---", "<hr>");
+    // 示例：将 # 转换为 <h1>
+    html.replace("# ", "<h1>");
+    // 你可以根据需要添加更多转换规则
+    // ...
+    return html;
 }
 
 void MainWindow::displayUserMessage(const QString &message)
 {
-    QLabel* userMessageLabel=returnUserLabel(message);
-    vBoxLayout_ChatHistory->addWidget(userMessageLabel, 0, Qt::AlignRight); // Align to the right(user)
+    QWidget* userBubble=createMessageBubble(plainTextToHtml(message),true);
+    vBoxLayout_ChatHistory->addWidget(userBubble, 0, Qt::AlignRight);
+    //强制刷新
+    updateScrollArea();
 }
 
 void MainWindow::displayAIMessage(const QString &message)
 {
-    QLabel* AIMessageLabel=returnAILabel(message);
-    vBoxLayout_ChatHistory->addWidget(AIMessageLabel, 0, Qt::AlignLeft); // Align to the left(AI)
+    QWidget* aiBubble=createMessageBubble(plainTextToHtml(message),false);
+    vBoxLayout_ChatHistory->addWidget(aiBubble, 0, Qt::AlignLeft);
+    //强制刷新
+    updateScrollArea();
+}
+
+void MainWindow::displayAIMessage(const QPixmap &image)
+{
+    QLabel* imageLabel = new QLabel(this);
+
+    // 计算一个最大宽度，例如聊天区域的一半
+    int maxWidth = chatScrollArea->width() / 2;
+    // 使用 scaled 函数在保持宽高比的情况下缩放图片
+    QPixmap scaledPixmap = image.scaled(maxWidth, image.height(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+    imageLabel->setPixmap(scaledPixmap);
+    imageLabel->setFixedSize(scaledPixmap.size()); // 设置QLabel的固定大小为缩放后的图片大小
+
+    QWidget* bubbleContainer = new QWidget(this);
+    bubbleContainer->setObjectName("aiMessageBubble");
+    QVBoxLayout* layout = new QVBoxLayout(bubbleContainer);
+    layout->addWidget(imageLabel);
+    layout->setAlignment(Qt::AlignLeft);
+    layout->setContentsMargins(5, 5, 5, 5);
+
+    vBoxLayout_ChatHistory->addWidget(bubbleContainer, 0, Qt::AlignLeft);
+    updateScrollArea();
 }
 
 
 void MainWindow::deleteVBoxChildren()
 {
-    QLayoutItem *item;
+    QLayoutItem* item;
     while ((item = vBoxLayout_ChatHistory->takeAt(0)) != nullptr) {
-        delete item->widget(); // Delete the widget owned by the layout item
-        delete item;          // Delete the layout item itself
+        if (item->widget()) {
+            item->widget()->deleteLater();
+        }
+        delete item;
     }
 }
 
@@ -350,45 +408,49 @@ void MainWindow::UISetup()
     chatHistoryList->setModel(chatHistoryModel);
     chatHistoryList->setSelectionModel(chatHistotySelectionModel);
     chatHistoryList->setSpacing(10);
-    QVBoxLayout* vBoxLayout_listview=new QVBoxLayout(this);
-    vBoxLayout_listview->addWidget(chatHistoryList, Qt::AlignTop | Qt::AlignLeft);
-    vBoxLayout_listview->setContentsMargins(15, 15, 15, 15);
-    vBoxLayout_listview->setSpacing(5);
-
+    // QVBoxLayout* vBoxLayout_listview=new QVBoxLayout(this);
+    // vBoxLayout_listview->addWidget(chatHistoryList, Qt::AlignTop | Qt::AlignLeft);
+    // vBoxLayout_listview->setContentsMargins(15, 15, 15, 15);
+    // vBoxLayout_listview->setSpacing(5);
+    // vBoxLayout_ChatHistory->addStretch();
     chatHistoryList->setMinimumSize(280, 400); // Set the minimum width to 300 and the height to 400
 
     //Create a new VBox to hold the dialog label
     ui->groupBox_functionalArea->setStyleSheet("QGroupBox { border: none; }");
     ui->groupBox_chatBox->setStyleSheet("QGroupBox { border: none; }");
 
-    vBoxLayout_ChatHistory=new QVBoxLayout(this);
+    vBoxLayout_ChatHistory=new QVBoxLayout();
     vBoxLayout_ChatHistory->setAlignment(Qt::AlignTop);
-    vBoxLayout_ChatHistory->addSpacing(5);
+    //vBoxLayout_ChatHistory->addSpacing(5);
 
     //Create a QWidget to hold the message and set the QVBoxLayout to it
     QWidget* messagesContainerWidget = new QWidget();
     messagesContainerWidget->setLayout(vBoxLayout_ChatHistory);
 
     //Creating the scrollarea
-    chatScrollArea=new QScrollArea(this);
+    chatScrollArea=new QScrollArea();
     chatScrollArea->setWidgetResizable(true);
     chatScrollArea->setWidget(messagesContainerWidget);
     chatScrollArea->setFrameShape(QFrame::NoFrame);
 
-    ui->groupBox_chatBox->setLayout(new QVBoxLayout());
-    ui->groupBox_chatBox->layout()->addWidget(chatScrollArea);
-    ui->groupBox_chatBox->layout()->setContentsMargins(0,0,0,0);
-
-    QVBoxLayout* rightPaneLayout =new QVBoxLayout(this);
-    rightPaneLayout ->addWidget(ui->groupBox_chatBox);
-    rightPaneLayout ->addWidget(ui->groupBox_functionalArea);
-    QGroupBox* chatBox=new QGroupBox(this);
-    chatBox->setLayout(rightPaneLayout);
+    QLayout* chatBoxLayout = ui->groupBox_chatBox->layout();
+    if (!chatBoxLayout) {
+        chatBoxLayout = new QVBoxLayout(ui->groupBox_chatBox);
+    }
+    chatBoxLayout->addWidget(chatScrollArea);
+    //chatBoxLayout->setContentsMargins(0, 0, 0, 0);
 
     // QSplitter
-    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
+    QSplitter* splitter = new QSplitter(Qt::Horizontal);
     splitter->addWidget(chatHistoryList); // Add chat history list to splitter
-    splitter->addWidget(chatBox); // Adding a chat area to splitter
+    //right pane
+    QWidget* rightPaneWidget = new QWidget();
+    QVBoxLayout* rightPaneLayout = new QVBoxLayout(rightPaneWidget);
+    rightPaneLayout->addWidget(ui->groupBox_chatBox);
+    rightPaneLayout->addWidget(ui->groupBox_functionalArea);
+    rightPaneLayout->setContentsMargins(0, 0, 0, 0);
+
+    splitter->addWidget(rightPaneWidget);// Adding a chat area to splitter
     setCentralWidget(splitter);
     loadChatHistory(chatHistoryModel); //load chat history to listview
 
@@ -494,6 +556,13 @@ void MainWindow::setupEventFilter()
 {
     ui->UserInput->installEventFilter(this);  // Install an event filter for the user input box
 }
+// 强制更新布局
+void MainWindow::updateScrollArea()
+{
+    QCoreApplication::processEvents();
+    QScrollBar *scrollBar = chatScrollArea->verticalScrollBar();
+    scrollBar->setValue(scrollBar->maximum());
+}
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
@@ -521,25 +590,31 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 //slots begin here
 void MainWindow::do_showChatHistory(const QModelIndex &index)
 {
-    //get conversation title
-
     //get current conversation index
     currentConversationIndex=chatHistoryList->selectionModel()->currentIndex().row();
     deleteVBoxChildren();
     if (currentConversationIndex >= 0 && currentConversationIndex < conversationHistoriesVector.size()) {
         QVector<QPair<QString,QString>> currentConversationDisplay = conversationHistoriesVector.at(currentConversationIndex);
         for(const QPair<QString, QString>& dialogPair  : currentConversationDisplay){
-            // Add labels to the display layout with appropriate alignment
-            QLabel* userLabel=returnUserLabel(dialogPair.first);
-            QLabel* aiLabel=returnAILabel(dialogPair.second);
-            // >>> debug <<<
-            qDebug() << "Displaying User Message (length " << dialogPair.first.length() << "): " << dialogPair.first.left(200) << (dialogPair.first.length() > 200 ? "..." : "");
-            qDebug() << "Displaying AI Message (length " << dialogPair.second.length() << "): " << dialogPair.second.left(200) << (dialogPair.second.length() > 200 ? "..." : "");
             displayUserMessage(dialogPair.first);
-            displayAIMessage(dialogPair.second);
+            QString aiResponse=dialogPair.second;
+            if(aiResponse.startsWith("data:image")){
+                QString base64Image=aiResponse.mid(aiResponse.indexOf(',') + 1);
+                QByteArray data=QByteArray::fromBase64(base64Image.toUtf8());
+                QPixmap pixmap;
+                if(pixmap.loadFromData(data)){
+                    displayAIMessage(pixmap);
+                }else{
+                    displayAIMessage("Failed to load image from history.");
+                }
+            }else{
+                displayAIMessage(aiResponse);
+            }
+
 
         }
     }
+    updateScrollArea();
 }
 
 void MainWindow::on_button_sendText_clicked()
@@ -549,8 +624,7 @@ void MainWindow::on_button_sendText_clicked()
 
     displayUserMessage(userInput);//append the user's new text to browser
     // After sending the message, let the scrollArea scroll to the bottom >>(Not working)<<
-    QScrollBar *scrollBar = chatScrollArea->verticalScrollBar();
-    scrollBar->setValue(scrollBar->maximum());  // Set the scroll bar value to the maximum value and scroll to the bottom
+    updateScrollArea();
     ui->UserInput->clear();
     ui->button_sendText->setEnabled(false);
 
@@ -606,9 +680,8 @@ void MainWindow::handleAiResponse(const QString &response)
     qDebug() << "AI Response Received: " << response; // Add this debug line to verify the response.
     displayAIMessage(response);
     // scroll to buttom(not working)
-    QScrollBar *scrollBar = chatScrollArea->verticalScrollBar();
-    scrollBar->setValue(scrollBar->maximum());
-    ui->button_sendText->setEnabled(true);
+    updateScrollArea();
+
 
     //sync the local json file
     if(currentConversationIndex!=-1&&currentConversationIndex<allConversations.size()){
@@ -661,9 +734,6 @@ void MainWindow::handleAiResponse(const QString &response)
         //debug
         int size=conversationHistoriesVector.at(conversationHistoriesVector.size()-1).size();
         QPair<QString,QString> lastChat=conversationHistoriesVector.at(conversationHistoriesVector.size()-1).at(size-1);
-        qDebug() << "Stored User Message in vector (length " << lastChat.first.length() << "): " << lastChat.first.left(200) << (lastChat.first.length() > 200 ? "..." : "");
-        qDebug() << "Stored AI Message in vector (length " << lastChat.second.length() << "): " << lastChat.second.left(200) << (lastChat.second.length() > 200 ? "..." : "");
-        //debug
         item->setData(currentConversationHistory.size(),Qt::UserRole);
     }
     ui->button_sendText->setEnabled(true);
@@ -723,20 +793,30 @@ void MainWindow::handleRewritedContent(const QString &rewritedContent)
 
 void MainWindow::handlePicContent(const QPixmap &image)
 {
-    // Add HTML to QTextBrowser (previous solution, deprecated)
+    displayAIMessage(image);
+    QByteArray byteArray;
+    QBuffer buffer(&byteArray);
+    buffer.open(QIODevice::WriteOnly);
+    image.save(&buffer,"PNG");
+    QString base64Img=QString("data:image/png;base64,")+QString::fromUtf8(byteArray.toBase64());
+    if (currentConversationIndex != -1 && currentConversationIndex < allConversations.size()){
+        QJsonObject currentChat = allConversations.at(currentConversationIndex).toObject();
+        QJsonArray dialogArray=currentChat["dialogue"].toArray();
+        QJsonObject newEntry;
+        newEntry["user"] = userInput;
+        newEntry["ai"] = base64Img;
+        dialogArray.append(newEntry);
+        currentChat["dialogue"] = dialogArray;
+        allConversations.replace(currentConversationIndex,currentChat);
+    }
+    // Ensure the scroll area updates to show the new image
+    updateScrollArea();
 
-    QLabel* labelPic=new QLabel(this);
-    labelPic->setObjectName("aiMessage");
-    labelPic->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    labelPic->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    labelPic->setText("<b>AI:</b> ");
-    labelPic->setWordWrap(true); //
-    labelPic->setPixmap(image);
-
+    // Re-enable the send button and image generation checkbox
     ui->button_sendText->setEnabled(true);
-
     ui->checkBox_imgGen->setEnabled(true);
 }
+
 //slots end here
 
 
@@ -773,9 +853,9 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
         mousePoint = event->globalPos() - this->pos();
         event->accept();
     }
-        else if(event->button() == Qt::RightButton){
-            this->close();
-        }
+    else if(event->button() == Qt::RightButton){
+        this->close();
+    }
 
 }
 
@@ -812,4 +892,11 @@ void MainWindow::resizeEvent(QResizeEvent *event)
         int hideButtonX = closeButtonX - hideButton->width() - buttonSpacing;
         hideButton->move(hideButtonX, buttonY);
     }
+
+    // 如果聊天历史列表有选中项，则重新显示聊天记录以调整图片大小
+    if (chatHistoryList && chatHistoryList->selectionModel()->hasSelection()) {
+        QModelIndex selectedIndex = chatHistoryList->selectionModel()->currentIndex();
+        do_showChatHistory(selectedIndex);
+    }
+
 }
