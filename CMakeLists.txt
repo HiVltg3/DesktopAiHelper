@@ -31,6 +31,8 @@ qt_add_executable(DesktopAiHelper
 
 
 
+
+
 )
 
 target_link_libraries(DesktopAiHelper

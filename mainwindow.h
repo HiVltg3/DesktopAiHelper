@@ -3,6 +3,20 @@
 
 #include <QMainWindow>
 #include <QJsonArray>
+//windows api
+#include <Windows.h>
+#include <UIAutomation.h>
+
+// 全局钩子句柄 (必须是全局的，因为回调函数不在类中)
+// HHOOK 是 Windows API 中钩子的句柄类型
+extern HHOOK g_hKeyboardHook;
+// 全局的 IUIAutomation 对象指针 (也建议是全局的或静态的，只创建一次)
+// 这样做是为了在钩子回调函数中也能访问到 UIA 对象
+extern IUIAutomation* g_pAutomation;
+// 全局的 MainWindow 实例指针 (用于跨线程通信到主UI线程)
+// 钩子回调函数中需要它来 QMetaObject::invokeMethod
+extern class MainWindow* g_pMainWindow;
+
 class QItemSelectionModel;
 class QStandardItemModel;
 class QListView;
@@ -78,8 +92,7 @@ private: //functions
     void displayUserMessage(const QString &message); // displays users new msg
     void displayAIMessage(const QString &message); // displays Ai's new msg
     void displayAIMessage(const QPixmap& image);// displays Ai's pic
-    QLabel* returnUserLabel(const QString &message);
-    QLabel* returnAILabel(const QString &message);
+
     void deleteVBoxChildren();
     //rewrite function related
     void showRewritePrompt(const QString& copiedText);
@@ -93,6 +106,40 @@ public:
     //rewrite function related
     void startClipboardMonitoring();
     void stopClipboardMonitoring();
+
+    //windows api
+    // =============================================//
+
+    //UIA
+    void initializeUIA();
+    void uninitializeUIA();
+    IUIAutomationElement* findChildEditControl(IUIAutomationElement* parentElement);
+    //hook
+    bool installGlobalKeyboardHook();
+    void uninstallGlobalKeyboardHook();
+    QString getControlTextUIAInternal(HWND hwndFocus);
+
+public slots:
+    // 用于接收从钩子线程传递过来的文本
+    // 必须是 public slot，并且参数类型要匹配 Q_ARG
+    void processCapturedText(const QString &text);
+    /*最理想的方法是：
+
+    首先，获取 Chrome_WidgetWin_1 窗口对应的 IUIAutomationElement。
+
+    然后，从这个父元素开始，遍历它的子元素树，寻找一个类型为“编辑框”（ControlType 为 UIA_EditControlTypeId）的元素。
+
+    找到这个编辑框元素后，再从它身上获取 ValuePattern 或 TextPattern。
+
+    创建一个新的辅助函数，例如 MainWindow::findChildEditControl(IUIAutomationElement* parentElement)。这个函数将递归地遍历 parentElement 的子元素。
+
+    在 getControlTextUIAInternal() 中，首先获取 Chrome_WidgetWin_1 对应的 pElement。
+
+    然后，调用 findChildEditControl(pElement)，让它返回真正的输入框 IUIAutomationElement*。
+
+    如果找到了，再从这个子元素上获取 ValuePattern 或 TextPattern。*/
+    // =============================================//
+
 private slots:
     void do_showChatHistory(const QModelIndex &index);
 
@@ -115,15 +162,6 @@ private slots:
 protected:
     virtual void closeEvent(QCloseEvent *event) override;
 
-    // QWidget interface
-protected:
-
-    // QObject interface
-
-
-    // QWidget interface
-
-    //mouse drags window
 protected:
     //drag widget
     virtual void mousePressEvent(QMouseEvent *event) override;

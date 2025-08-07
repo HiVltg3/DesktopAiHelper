@@ -25,8 +25,59 @@
 #include <QPalette>
 #include <QSettings>
 #include <QGroupBox>
+#include <vector>
 #include "geminiclient.h"
 #include "chatgptclient.h"
+//===========windows api
+//initialize
+HHOOK g_hKeyboardHook = NULL;
+IUIAutomation* g_pAutomation = NULL;
+MainWindow* g_pMainWindow = NULL;
+//global hook  callback
+LRESULT CALLBACK LowLevelKeyboardProc(int nCode,WPARAM wParam,LPARAM lParam){
+    //WPARAM 键盘事件的类型
+    //LPARAM 包含与键盘事件相关的附加信息
+    //nCode负值（表示消息未被处理）或零及正值（表示消息已被处理）
+    if(nCode<0){
+        return CallNextHookEx(g_hKeyboardHook,nCode,wParam,lParam);
+    }
+    if(wParam==WM_KEYUP||wParam==WM_SYSKEYUP){
+        KBDLLHOOKSTRUCT* pKbdStruct = (KBDLLHOOKSTRUCT*)(lParam);
+        //// ====== 1. 获取焦点控件的句柄 ======
+        HWND hWndFocus=NULL;
+        GUITHREADINFO guiInfo={0};
+        guiInfo.cbSize=sizeof(GUITHREADINFO);
+        if(GetGUIThreadInfo(NULL,&guiInfo)){// NULL表示获取前景线程的信息
+            hWndFocus=guiInfo.hwndFocus;// 焦点控件的句柄
+        }
+        if (hWndFocus != NULL) {
+            TCHAR className[256];
+            if (GetClassName(hWndFocus, className, 256)) {
+                qDebug() << "Focused window class name:" << QString::fromWCharArray(className);
+            }}
+        if(hWndFocus!=NULL && g_pMainWindow!=NULL && g_pAutomation!=NULL){
+            // ====== 2. 使用 UI Automation 获取文本 ======
+            QString extractedText=g_pMainWindow->getControlTextUIAInternal(hWndFocus);
+            if (!extractedText.isEmpty()){
+                // ====== 3. 将文本安全地传递回 Qt 主线程 ======
+                // 使用 QMetaObject::invokeMethod 进行线程安全调用
+                QMetaObject::invokeMethod(g_pMainWindow,"processCapturedText",
+                                          Qt::QueuedConnection, // 关键：确保是队列连接，保证线程安全
+                                          Q_ARG(QString, extractedText));
+                /*钩子回调函数在另一个线程中执行，不能直接调用 Qt UI 相关的代码。
+
+我们使用 QMetaObject::invokeMethod，并将 Qt::QueuedConnection 作为连接类型。
+
+这个调用会将一个任务（调用 MainWindow 的某个槽函数）放入 Qt 主线程的事件队列中。当主线程空闲时，它会自动执行这个任务。
+
+我们通过 Q_ARG 宏将获取到的文本作为参数，安全地传递给我们的槽函数。*/
+            }
+        }
+    }
+    // 将消息传递给链中的下一个钩子
+    return CallNextHookEx(g_hKeyboardHook,nCode,wParam,lParam);
+}
+//===================
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow),clipboardMonitorTimer(nullptr)
@@ -36,6 +87,13 @@ MainWindow::MainWindow(QWidget *parent)
     loadQSS();
     setupEventFilter();
     ChatGPTSetup();
+
+    //install hook, innitialized UIA and COM
+    g_pMainWindow=this;
+    initializeUIA();
+    if(!installGlobalKeyboardHook()){
+        QMessageBox::critical(this,"Error","Can't install global keyboard hook!");
+    }
 }
 
 MainWindow::~MainWindow()
@@ -48,6 +106,9 @@ MainWindow::~MainWindow()
         clipboardMonitorTimer->stop(); // make sure the timer stopped
         delete clipboardMonitorTimer;
     }
+    //clear hook and UIA
+    uninstallGlobalKeyboardHook();
+    uninitializeUIA();
 }
 
 
@@ -254,6 +315,7 @@ void MainWindow::displayAIMessage(const QPixmap &image)
 }
 
 
+
 void MainWindow::deleteVBoxChildren()
 {
     QLayoutItem* item;
@@ -285,6 +347,201 @@ void MainWindow::stopClipboardMonitoring()
         qDebug() << "Clipboard monitoring stopped.";
     }
 }
+
+//=======windows api
+void MainWindow:: initializeUIA()
+{
+     qDebug() << "Initializing COM and UIA...";
+    // 只需要初始化COM一次
+    HRESULT hr=CoInitializeEx(NULL,COINIT_APARTMENTTHREADED);//用于初始化 COM 库。它设置当前线程的 COM 运行环境，允许该线程使用 COM 功能。COINIT_APARTMENTTHREADED: 指定线程的并发模型为单元线程（STA）。
+    if(FAILED(hr)&&hr!=S_FALSE){
+        qWarning() << "Failed to initialize COM library. HRESULT:" << hr;
+        return;
+    }
+    qDebug() << "COM initialized successfully.";
+    // 创建IUIAutomation对象
+    if(g_pAutomation==NULL){
+        hr=CoCreateInstance(CLSID_CUIAutomation,//CLSID_CUIAutomation: 指定要创建的对象的类标识符（CLSID），表示 UI 自动化对象。
+                              NULL,//表示没有保留的参数。
+                              CLSCTX_INPROC_SERVER,//指定对象将在同一进程中创建。
+                              IID_IUIAutomation,//指定请求的接口标识符（IID），表示希望获得 IUIAutomation 接口。
+                              (void**)&g_pAutomation);//将创建的对象指针存储到 g_pAutomation 中
+        if(FAILED(hr)){
+            qWarning() << "Failed to create IUIAutomation object. HRESULT:" << hr;
+            g_pAutomation = NULL; // 确保失败时为NULL
+            return;
+        }
+        qDebug() << "IUIAutomation object created successfully. Pointer:" << g_pAutomation;
+    }else{
+        qDebug() << "IUIAutomation object already exists.";
+    }
+}
+
+void MainWindow::uninitializeUIA()
+{
+    qDebug() << "Uninitializing COM and UIA...";
+    if(g_pAutomation){
+        g_pAutomation->Release();//release UIA object
+        g_pAutomation=NULL;
+        qDebug() << "IUIAutomation object released.";
+    }
+    CoUninitialize();
+    qDebug() << "COM uninitialized.";
+}
+
+bool MainWindow::installGlobalKeyboardHook()
+{
+    //install global low level keyboard hook
+    // GetModuleHandle(NULL) 获取当前进程的模块句柄
+    g_hKeyboardHook=SetWindowsHookEx(WH_KEYBOARD_LL,LowLevelKeyboardProc,GetModuleHandle(NULL),0);
+    if(g_hKeyboardHook==NULL){
+        qCritical() << "Failed to install global keyboard hook! Error:" << GetLastError();
+        return false;
+    }
+    qDebug() << "Global keyboard hook installed successfully.";
+    return true;
+}
+
+void MainWindow::uninstallGlobalKeyboardHook()
+{
+    if(g_hKeyboardHook!=NULL){
+        UnhookWindowsHookEx(g_hKeyboardHook);
+        g_hKeyboardHook=NULL;
+        qDebug() << "Global keyboard hook uninstalled.";
+    }
+}
+IUIAutomationElement *MainWindow::findChildEditControl(IUIAutomationElement *parentElement)
+{
+    if(parentElement==NULL){
+        return NULL;
+    }
+    // 创建一个条件，用于查找“编辑框”控件
+    IUIAutomationCondition* pCondition =NULL;
+    // 1. 创建一个 VARIANT 结构体
+    VARIANT vtControlType;
+    // 2. 将其类型设置为 VT_I4 (表示一个32位有符号整数)
+    vtControlType.vt = VT_I4;
+    // 3. 将 UIA_EditControlTypeId 的值赋给它
+    vtControlType.lVal = UIA_EditControlTypeId;
+    HRESULT hr=g_pAutomation->CreatePropertyCondition(UIA_ControlTypePropertyId,vtControlType,&pCondition);//创建筛选条件
+    if(FAILED(hr)){
+        return NULL;
+    }
+    IUIAutomationElementArray* pFoundElements=NULL;
+    hr=parentElement->FindAll(TreeScope_Subtree,pCondition,&pFoundElements);// 遍历整个子元素树
+    if(FAILED(hr)){
+        return NULL;
+    }
+    int count=0;
+    pFoundElements->get_Length(&count);
+    if (count > 0){
+        IUIAutomationElement * foundElement;
+        pFoundElements->GetElement(0,&foundElement);
+        pFoundElements->Release();
+        return foundElement;
+    }
+    pFoundElements->Release();
+    return NULL;
+    //// 查找符合条件的子元素
+}
+QString MainWindow::getControlTextUIAInternal(HWND hwndFocus) {
+    QString extractedText;//是 UI Automation 中的一个接口，用于表示和操作 UI 元素
+    BSTR bstrText;//是一种用于表示字符串的 COM 类型，支持宽字符和内存管理
+    IUIAutomationElement* pElement;
+
+    if(g_pAutomation==NULL){//! 运算符的优先级高于 ==。所以 !g_pAutomation == NULL
+        qWarning() << "UIA automation object is not initialized.";
+        return QString();
+    }
+    HRESULT hr=g_pAutomation->ElementFromHandle(hwndFocus,&pElement);
+    if(FAILED(hr)||pElement==NULL){
+        qDebug() << "Failed to get UIA element from handle. HRESULT:" << hr;
+        return QString();
+    }
+    IUIAutomationElement* pInputControl=findChildEditControl(pElement);
+    if(pInputControl==NULL){
+        qDebug() << "Did not find a child edit control, using parent element.";
+        pInputControl = pElement;//if is null, use parent element
+        pInputControl->AddRef();//pInputControl如果用原来的 增加引用计数
+    }
+    else{
+         qDebug() << "Found a child edit control.";
+    }
+    // 尝试获取 ValuePattern (适用于大部分简单的文本框，如网页输入框、记事本)
+    //UI Automation（UIA）中的一个模式，用于表示和操作具有可编辑值的 UI 元素。
+    IUIAutomationValuePattern* pValuePattern=NULL;
+    hr=pInputControl->GetCurrentPatternAs(UIA_ValuePatternId,IID_IUIAutomationValuePattern,(void**)&pValuePattern);
+    if(SUCCEEDED(hr)&&pValuePattern!=NULL){
+        hr=pValuePattern->get_CurrentValue(&bstrText);
+        if(SUCCEEDED(hr)&&bstrText!=NULL){
+            extractedText =QString::fromWCharArray(reinterpret_cast<const wchar_t*>(bstrText));
+        }
+        if(bstrText){SysFreeString(bstrText);bstrText=NULL;}
+        pValuePattern->Release();
+        pInputControl->Release();
+        pElement->Release();
+        return extractedText;
+    }
+    //if valuePatter is not working, try textpattern
+    // 如果 ValuePattern 不行，尝试获取 TextPattern (适用于富文本、复杂编辑器，如 Word, QQ聊天框)
+    IUIAutomationTextPattern* pTextPattern=NULL;
+    hr=pInputControl->GetCurrentPatternAs(UIA_TextPatternId,IID_IUIAutomationTextPattern,(void**)&pTextPattern);
+    if(SUCCEEDED(hr)&&pTextPattern != NULL){
+        IUIAutomationTextRange* pTextRange=NULL;
+        hr=pTextPattern->get_DocumentRange(&pTextRange);
+        if(SUCCEEDED(hr)&&pTextRange!=NULL){
+            hr=pTextRange->GetText(-1,&bstrText);//-1 means extract all text
+            if(SUCCEEDED(hr)&&bstrText!=NULL){
+                extractedText =QString::fromWCharArray(reinterpret_cast<const wchar_t*>(bstrText));
+            }
+            if(bstrText){SysFreeString(bstrText);bstrText=NULL;}
+            pTextRange->Release();
+
+        }
+        pTextPattern->Release();
+        pInputControl->Release();
+        pElement->Release();
+        return extractedText;
+    }
+    //if both ways are not working
+    if(pElement){
+        pElement->Release();// 确保在所有返回路径都释放
+    }
+    if(pInputControl){
+        pInputControl->Release();// 确保在所有返回路径都释放
+    }
+    return QString();//return empty string
+}
+//public slot
+void MainWindow::processCapturedText(const QString &text)
+{
+    if(text.isEmpty()){
+        //qDebug() << "Received empty text.";
+        return;
+    }
+    qDebug() << "Captured text:" << text;
+    showRewritePrompt(text);
+    // =========================================================
+    // 在这里触发你的 AI 处理逻辑！
+    // =========================================================
+    // 调用你的 AI 客户端（GeminiClient 或 ChatGPTClient）
+    // 例如：
+    // geminiClient->requestCompletion(text);
+    // 或者显示一个 QWidget 提示框，询问用户是否需要建议
+
+    // 注意：你可能需要一个机制来判断当前文本是否需要处理，
+    // 比如：
+    // 1. 文本长度变化不大时（用户只输入了一个字符，不要频繁请求AI）
+    // 2. 文本内容与上次获取的文本有明显差异时
+    // 3. 用户停顿输入一段时间后
+
+    // 示例：简单地打印或显示在某个 QLabel/QTextBrowser 上
+    // ui->debugTextBrowser->setText(text); // 假设你有一个用于调试的文本框
+
+    // 你也可以在这里弹出提示窗口或在输入框附近显示建议
+    // 这是一个触发点，你根据需要设计后续UI交互和AI调用逻辑
+}
+//==============end windows api
 
 void MainWindow::showRewritePrompt(const QString &copiedText)
 {
