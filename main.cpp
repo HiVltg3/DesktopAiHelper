@@ -13,8 +13,8 @@ int main(int argc, char *argv[])
     QSystemTrayIcon* trayIcon=new QSystemTrayIcon(QIcon(":/icons/icons/mainIcon.png"));
     QMenu *trayMenu = new QMenu();
     QAction *exitAction = new QAction("Exit", trayMenu);
-    QAction *action_StartMonitorringClipboard = new QAction("Enable rewritting", trayMenu);
-    QAction *action_StopMonitorringClipboard = new QAction("Disable rewritting", trayMenu);
+    QAction *action_StartMonitorringClipboard = new QAction("Enable clipboard check rewritting", trayMenu);
+    QAction *action_StopMonitorringClipboard = new QAction("Disable clipboard check rewritting", trayMenu);
 
     trayMenu->addAction(exitAction);
     trayMenu->addAction(action_StartMonitorringClipboard);

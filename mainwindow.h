@@ -79,6 +79,16 @@ private:
         //add ai models here
     };
 
+    //windows api(rewrite related)
+    QTimer* typingTimer;// 用于检测输入停顿的计时器
+    QString lastCapturedText;// 存储上次捕获的文本
+    QString lastClipboardText;//存储上次剪贴板的文本
+    QPoint lastMousePosition; // 存储上次鼠标位置
+    QRect lastCapturedRect;// 用于存储上次捕获的输入框坐标
+    IUIAutomationElement* editBlock=nullptr;
+    bool isClipboardEvent = false; // 一个标志位，用于区分事件来源
+    bool isClipboardMonitorEnabled = false;//一个开关，用于控制是否启用复制检测功能
+    bool isRewriteFlowActive = false; // 新增一个标志位
 private: //functions
     void loadChatHistory(QStandardItemModel *model); //load chat history
     QString getTextColorBasedOnTheme();
@@ -95,8 +105,7 @@ private: //functions
 
     void deleteVBoxChildren();
     //rewrite function related
-    void showRewritePrompt(const QString& copiedText);
-
+    void showRewritePrompt(const QString copiedText);
     //install event filter for userinput
     void setupEventFilter();
     void updateScrollArea();// 强制更新布局
@@ -106,39 +115,27 @@ public:
     //rewrite function related
     void startClipboardMonitoring();
     void stopClipboardMonitoring();
-
+    bool getIsRewriteFlowActive() const{return isRewriteFlowActive;}
+    void setIsRewriteFlowActive(bool active) {isRewriteFlowActive=active;}
     //windows api
     // =============================================//
 
     //UIA
     void initializeUIA();
     void uninitializeUIA();
-    IUIAutomationElement* findChildEditControl(IUIAutomationElement* parentElement);
+    IUIAutomationElement* getEditBlock() { return editBlock; }
     //hook
     bool installGlobalKeyboardHook();
     void uninstallGlobalKeyboardHook();
-    QString getControlTextUIAInternal(HWND hwndFocus);
-
+    void getControlTextUIAInternal(HWND hwndFocus);//文本和坐标的传递逻辑将由它来封装，它不再需要返回任何东西。
+    IUIAutomationElement* findChildEditControl(IUIAutomationElement* parentElement);
+    void setControlTextUIA(IUIAutomationElement* element, const QString& text);
+    void pasteTextIntoActiveControl(const QString& text);
 public slots:
     // 用于接收从钩子线程传递过来的文本
     // 必须是 public slot，并且参数类型要匹配 Q_ARG
-    void processCapturedText(const QString &text);
-    /*最理想的方法是：
-
-    首先，获取 Chrome_WidgetWin_1 窗口对应的 IUIAutomationElement。
-
-    然后，从这个父元素开始，遍历它的子元素树，寻找一个类型为“编辑框”（ControlType 为 UIA_EditControlTypeId）的元素。
-
-    找到这个编辑框元素后，再从它身上获取 ValuePattern 或 TextPattern。
-
-    创建一个新的辅助函数，例如 MainWindow::findChildEditControl(IUIAutomationElement* parentElement)。这个函数将递归地遍历 parentElement 的子元素。
-
-    在 getControlTextUIAInternal() 中，首先获取 Chrome_WidgetWin_1 对应的 pElement。
-
-    然后，调用 findChildEditControl(pElement)，让它返回真正的输入框 IUIAutomationElement*。
-
-    如果找到了，再从这个子元素上获取 ValuePattern 或 TextPattern。*/
-    // =============================================//
+    void processCapturedText(const QString &text,const QRect& rect);
+    void onTypingPause();// 在输入停顿时执行的槽函数
 
 private slots:
     void do_showChatHistory(const QModelIndex &index);

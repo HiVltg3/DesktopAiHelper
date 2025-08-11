@@ -43,35 +43,19 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode,WPARAM wParam,LPARAM lParam){
     }
     if(wParam==WM_KEYUP||wParam==WM_SYSKEYUP){
         KBDLLHOOKSTRUCT* pKbdStruct = (KBDLLHOOKSTRUCT*)(lParam);
-        //// ====== 1. 获取焦点控件的句柄 ======
+        // ====== 1. 获取焦点控件的句柄 ======
         HWND hWndFocus=NULL;
         GUITHREADINFO guiInfo={0};
         guiInfo.cbSize=sizeof(GUITHREADINFO);
         if(GetGUIThreadInfo(NULL,&guiInfo)){// NULL表示获取前景线程的信息
             hWndFocus=guiInfo.hwndFocus;// 焦点控件的句柄
         }
-        if (hWndFocus != NULL) {
-            TCHAR className[256];
-            if (GetClassName(hWndFocus, className, 256)) {
-                qDebug() << "Focused window class name:" << QString::fromWCharArray(className);
-            }}
+        HWND h = hWndFocus;
         if(hWndFocus!=NULL && g_pMainWindow!=NULL && g_pAutomation!=NULL){
             // ====== 2. 使用 UI Automation 获取文本 ======
-            QString extractedText=g_pMainWindow->getControlTextUIAInternal(hWndFocus);
-            if (!extractedText.isEmpty()){
-                // ====== 3. 将文本安全地传递回 Qt 主线程 ======
-                // 使用 QMetaObject::invokeMethod 进行线程安全调用
-                QMetaObject::invokeMethod(g_pMainWindow,"processCapturedText",
-                                          Qt::QueuedConnection, // 关键：确保是队列连接，保证线程安全
-                                          Q_ARG(QString, extractedText));
-                /*钩子回调函数在另一个线程中执行，不能直接调用 Qt UI 相关的代码。
-
-我们使用 QMetaObject::invokeMethod，并将 Qt::QueuedConnection 作为连接类型。
-
-这个调用会将一个任务（调用 MainWindow 的某个槽函数）放入 Qt 主线程的事件队列中。当主线程空闲时，它会自动执行这个任务。
-
-我们通过 Q_ARG 宏将获取到的文本作为参数，安全地传递给我们的槽函数。*/
-            }
+            QMetaObject::invokeMethod(g_pMainWindow,[h](){
+                g_pMainWindow->getControlTextUIAInternal(h);
+            },Qt::QueuedConnection);
         }
     }
     // 将消息传递给链中的下一个钩子
@@ -94,14 +78,25 @@ MainWindow::MainWindow(QWidget *parent)
     if(!installGlobalKeyboardHook()){
         QMessageBox::critical(this,"Error","Can't install global keyboard hook!");
     }
+    isClipboardEvent=false;//默认不开启
+
+    typingTimer=new QTimer(this);
+    typingTimer->setSingleShot(true);
+    connect(typingTimer,&QTimer::timeout,this,&MainWindow::onTypingPause);
+
+    clipboardMonitorTimer=new QTimer(this);
+    connect(clipboardMonitorTimer,&QTimer::timeout,this,&MainWindow::checkClipboard);
 }
 
 MainWindow::~MainWindow()
 {
     saveChatHistory();
-    delete popup;
     delete ui;
     conversationHistoriesVector.clear();
+    if(typingTimer){
+        typingTimer->stop();;
+        delete typingTimer;
+    }
     if(clipboardMonitorTimer){
         clipboardMonitorTimer->stop(); // make sure the timer stopped
         delete clipboardMonitorTimer;
@@ -109,6 +104,8 @@ MainWindow::~MainWindow()
     //clear hook and UIA
     uninstallGlobalKeyboardHook();
     uninitializeUIA();
+    if (editBlock) { editBlock->Release(); editBlock = nullptr; }
+
 }
 
 
@@ -330,18 +327,18 @@ void MainWindow::deleteVBoxChildren()
 //rewrite function related
 void MainWindow::startClipboardMonitoring()
 {
-    if (!clipboardMonitorTimer) { // Make sure only one timer object
-        clipboardMonitorTimer = new QTimer(this);
-        connect(clipboardMonitorTimer, &QTimer::timeout, this, &MainWindow::checkClipboard);
-    }
-    if(!clipboardMonitorTimer->isActive()){
-        clipboardMonitorTimer->start(1000); // check clipboard every 1s
+    isClipboardMonitorEnabled=true;
+    isClipboardEvent=true;
+    if(clipboardMonitorTimer){
+        clipboardMonitorTimer->start(1000);
         qDebug() << "Clipboard monitoring started.";
     }
 }
 
 void MainWindow::stopClipboardMonitoring()
 {
+    isClipboardMonitorEnabled = false;
+    isClipboardEvent=false;
     if(clipboardMonitorTimer&&clipboardMonitorTimer->isActive()){
         clipboardMonitorTimer->stop();
         qDebug() << "Clipboard monitoring stopped.";
@@ -351,7 +348,7 @@ void MainWindow::stopClipboardMonitoring()
 //=======windows api
 void MainWindow:: initializeUIA()
 {
-     qDebug() << "Initializing COM and UIA...";
+    qDebug() << "Initializing COM and UIA...";
     // 只需要初始化COM一次
     HRESULT hr=CoInitializeEx(NULL,COINIT_APARTMENTTHREADED);//用于初始化 COM 库。它设置当前线程的 COM 运行环境，允许该线程使用 COM 功能。COINIT_APARTMENTTHREADED: 指定线程的并发模型为单元线程（STA）。
     if(FAILED(hr)&&hr!=S_FALSE){
@@ -441,32 +438,91 @@ IUIAutomationElement *MainWindow::findChildEditControl(IUIAutomationElement *par
         return foundElement;
     }
     pFoundElements->Release();
+    pCondition->Release();
     return NULL;
     //// 查找符合条件的子元素
 }
-QString MainWindow::getControlTextUIAInternal(HWND hwndFocus) {
+
+void MainWindow::setControlTextUIA(IUIAutomationElement *element, const QString &text)
+{
+    if(!element){
+        qWarning("setControlTextUIA: IUIAutomationElement is null.");
+        pasteTextIntoActiveControl(text);
+        return;
+    }
+    BSTR bstrText=SysAllocString(reinterpret_cast<const OLECHAR*>(text.utf16()));
+    IUIAutomationValuePattern* pValuePattern=NULL;
+    HRESULT hr=element->GetCurrentPatternAs(UIA_ValuePatternId,IID_IUIAutomationValuePattern,(void**)&pValuePattern);
+    if(SUCCEEDED(hr)&&(pValuePattern!=NULL)){
+        hr=pValuePattern->SetValue(bstrText);
+        pValuePattern->Release();
+        SysFreeString(bstrText);    // 释放 BSTR
+        if (SUCCEEDED(hr)) return;
+        qWarning("setControlTextUIA: SetValue failed, fallback to paste.");
+    }
+    else{
+        SysFreeString(bstrText);    // 释放 BSTR
+        qWarning("setControlTextUIA: ValuePattern not supported, fallback to paste.");
+    }
+    pasteTextIntoActiveControl(text);
+}
+
+void MainWindow::pasteTextIntoActiveControl(const QString &text)
+{
+    QClipboard* clipboard=QApplication::clipboard();
+    clipboard->setText(text);
+    HWND hwndFocus=GetFocus();
+    if(hwndFocus==NULL){
+        return;
+    }
+    SetFocus(hwndFocus);//设置焦点
+    Sleep(50);// 稍作等待以确保焦点切换完成
+
+    // 模拟 Ctrl + A (全选)
+    keybd_event(VK_CONTROL,0x90,0,0);
+    keybd_event(0x41,0x9D, 0, 0);
+    keybd_event(0x41, 0x9D, KEYEVENTF_KEYUP,0);// 抬起'A'
+    keybd_event(VK_CONTROL, 0x9D, KEYEVENTF_KEYUP, 0);// 抬起Ctrl
+
+    //模拟 Ctrl + V (粘贴)
+    keybd_event(VK_CONTROL,0x90,0,0);
+    keybd_event(0x56,0x9D, 0, 0);
+    keybd_event(0x56, 0x9D, KEYEVENTF_KEYUP,0);// 抬起'v'
+    keybd_event(VK_CONTROL, 0x9D, KEYEVENTF_KEYUP, 0);// 抬起Ctrl
+}
+void MainWindow::getControlTextUIAInternal(HWND hwndFocus) {
     QString extractedText;//是 UI Automation 中的一个接口，用于表示和操作 UI 元素
     BSTR bstrText;//是一种用于表示字符串的 COM 类型，支持宽字符和内存管理
     IUIAutomationElement* pElement;
 
     if(g_pAutomation==NULL){//! 运算符的优先级高于 ==。所以 !g_pAutomation == NULL
         qWarning() << "UIA automation object is not initialized.";
-        return QString();
+        return;
     }
     HRESULT hr=g_pAutomation->ElementFromHandle(hwndFocus,&pElement);
     if(FAILED(hr)||pElement==NULL){
         qDebug() << "Failed to get UIA element from handle. HRESULT:" << hr;
-        return QString();
+        return;
     }
     IUIAutomationElement* pInputControl=findChildEditControl(pElement);
+
     if(pInputControl==NULL){
         qDebug() << "Did not find a child edit control, using parent element.";
         pInputControl = pElement;//if is null, use parent element
         pInputControl->AddRef();//pInputControl如果用原来的 增加引用计数
     }
     else{
-         qDebug() << "Found a child edit control.";
+        qDebug() << "Found a child edit control.";
     }
+    IUIAutomationElement* old = editBlock;
+    editBlock = pInputControl;
+    editBlock->AddRef();
+    if (old) { old->Release(); old = nullptr; }
+
+    // 获取输入框的屏幕坐标
+    RECT boundingRect;
+    hr=pInputControl->get_CurrentBoundingRectangle(&boundingRect);
+
     // 尝试获取 ValuePattern (适用于大部分简单的文本框，如网页输入框、记事本)
     //UI Automation（UIA）中的一个模式，用于表示和操作具有可编辑值的 UI 元素。
     IUIAutomationValuePattern* pValuePattern=NULL;
@@ -478,75 +534,77 @@ QString MainWindow::getControlTextUIAInternal(HWND hwndFocus) {
         }
         if(bstrText){SysFreeString(bstrText);bstrText=NULL;}
         pValuePattern->Release();
-        pInputControl->Release();
-        pElement->Release();
-        return extractedText;
+        pInputControl->Release(); pInputControl = nullptr;
+        pElement->Release(); pElement = nullptr;
     }
-    //if valuePatter is not working, try textpattern
-    // 如果 ValuePattern 不行，尝试获取 TextPattern (适用于富文本、复杂编辑器，如 Word, QQ聊天框)
-    IUIAutomationTextPattern* pTextPattern=NULL;
-    hr=pInputControl->GetCurrentPatternAs(UIA_TextPatternId,IID_IUIAutomationTextPattern,(void**)&pTextPattern);
-    if(SUCCEEDED(hr)&&pTextPattern != NULL){
-        IUIAutomationTextRange* pTextRange=NULL;
-        hr=pTextPattern->get_DocumentRange(&pTextRange);
-        if(SUCCEEDED(hr)&&pTextRange!=NULL){
-            hr=pTextRange->GetText(-1,&bstrText);//-1 means extract all text
-            if(SUCCEEDED(hr)&&bstrText!=NULL){
-                extractedText =QString::fromWCharArray(reinterpret_cast<const wchar_t*>(bstrText));
+    else{
+        //if valuePatter is not working, try textpattern
+        // 如果 ValuePattern 不行，尝试获取 TextPattern (适用于富文本、复杂编辑器，如 Word, QQ聊天框)
+        IUIAutomationTextPattern* pTextPattern=NULL;
+        hr=pInputControl->GetCurrentPatternAs(UIA_TextPatternId,IID_IUIAutomationTextPattern,(void**)&pTextPattern);
+        if(SUCCEEDED(hr)&&pTextPattern != NULL){
+            IUIAutomationTextRange* pTextRange=NULL;
+            hr=pTextPattern->get_DocumentRange(&pTextRange);
+            if(SUCCEEDED(hr)&&pTextRange!=NULL){
+                hr=pTextRange->GetText(-1,&bstrText);//-1 means extract all text
+                if(SUCCEEDED(hr)&&bstrText!=NULL){
+                    extractedText =QString::fromWCharArray(reinterpret_cast<const wchar_t*>(bstrText));
+                }
+                if(bstrText){SysFreeString(bstrText);bstrText=NULL;}
+                pTextRange->Release();
             }
-            if(bstrText){SysFreeString(bstrText);bstrText=NULL;}
-            pTextRange->Release();
-
+            pTextPattern->Release();
+            pInputControl->Release();
+            pElement->Release();
         }
-        pTextPattern->Release();
-        pInputControl->Release();
-        pElement->Release();
-        return extractedText;
     }
-    //if both ways are not working
-    if(pElement){
-        pElement->Release();// 确保在所有返回路径都释放
+
+    //将文本和坐标一起传递回主线程
+    if(!extractedText.isEmpty()){
+        QRect rect(boundingRect.left,boundingRect.top,
+                   boundingRect.right-boundingRect.left,
+                   boundingRect.bottom-boundingRect.top);
+        QMetaObject::invokeMethod(g_pMainWindow,"processCapturedText",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(QString,extractedText),
+                                  Q_ARG(QRect,rect));
     }
-    if(pInputControl){
-        pInputControl->Release();// 确保在所有返回路径都释放
-    }
-    return QString();//return empty string
 }
 //public slot
-void MainWindow::processCapturedText(const QString &text)
+void MainWindow::processCapturedText(const QString &text,const QRect& rect)
 {
-    if(text.isEmpty()){
+    if(getIsRewriteFlowActive()){
+        return;
+    }
+    if(text.isEmpty()||text == lastCapturedText){
         //qDebug() << "Received empty text.";
         return;
     }
     qDebug() << "Captured text:" << text;
-    showRewritePrompt(text);
-    // =========================================================
-    // 在这里触发你的 AI 处理逻辑！
-    // =========================================================
-    // 调用你的 AI 客户端（GeminiClient 或 ChatGPTClient）
-    // 例如：
-    // geminiClient->requestCompletion(text);
-    // 或者显示一个 QWidget 提示框，询问用户是否需要建议
+    lastCapturedRect=rect;
+    lastCapturedText=text;
+    typingTimer->start(800);
+}
 
-    // 注意：你可能需要一个机制来判断当前文本是否需要处理，
-    // 比如：
-    // 1. 文本长度变化不大时（用户只输入了一个字符，不要频繁请求AI）
-    // 2. 文本内容与上次获取的文本有明显差异时
-    // 3. 用户停顿输入一段时间后
-
-    // 示例：简单地打印或显示在某个 QLabel/QTextBrowser 上
-    // ui->debugTextBrowser->setText(text); // 假设你有一个用于调试的文本框
-
-    // 你也可以在这里弹出提示窗口或在输入框附近显示建议
-    // 这是一个触发点，你根据需要设计后续UI交互和AI调用逻辑
+void MainWindow::onTypingPause()
+{
+    if(lastCapturedText.isEmpty()){
+        return;
+    }
+    showRewritePrompt(lastCapturedText);
 }
 //==============end windows api
 
-void MainWindow::showRewritePrompt(const QString &copiedText)
+void MainWindow::showRewritePrompt(const QString copiedText)
 {
-    QPoint mousePosition=QCursor::pos();//get current mouse position
+    setIsRewriteFlowActive(true);
     //popup the widget offer rewrite choice
+    if(popup){
+        qDebug() <<"删除popup...";
+        popup->close();
+        popup->deleteLater();
+        popup=nullptr;
+    }
     popup=new QWidget();
     popup->setWindowFlags(Qt::ToolTip|Qt::FramelessWindowHint);
     popup->setAttribute(Qt::WA_TranslucentBackground);
@@ -594,49 +652,126 @@ void MainWindow::showRewritePrompt(const QString &copiedText)
     rewriteButtonWithPrompt->setIcon(QIcon(":/icons/icons/magicwand.png"));
     // Make the popup window automatically resize according to the content of its layout
     popup->adjustSize();
-    // After resizing, move the popup window to the mouse position
-    popup->move(mousePosition.x(), mousePosition.y());
+
+    // 获取当前屏幕的缩放比
+    qreal devicePixelRatio = 1.0;
+    QScreen *screen = QApplication::primaryScreen();
+    if (screen) {
+        devicePixelRatio = screen->devicePixelRatio();
+    }
+
+    // Set the position of the popup
+    QPoint popupPosition;
+
+    // Check if the captured rectangle is valid and its dimensions are not ridiculously large
+    // We use a scaled threshold based on the device pixel ratio
+    const int maxLogicalDimension = 1000;
+    if(!isClipboardEvent){
+        qDebug() << "Detected typing pause. Processing text:" << lastCapturedText;
+        if (lastCapturedRect.isValid() &&
+            lastCapturedRect.width() / devicePixelRatio < maxLogicalDimension &&
+            lastCapturedRect.height() / devicePixelRatio < maxLogicalDimension)
+        {
+            // Convert the physical coordinates from UIA to logical coordinates for Qt
+            QPoint bottomRightLogical = lastCapturedRect.bottomRight() / devicePixelRatio;
+
+            // Adjust the popup position to be inside the bottom-right corner of the input box
+            // We get the popup's size here to calculate the offset
+            popup->adjustSize();
+            popupPosition = bottomRightLogical - QPoint(popup->width() + 10, popup->height() + 10); // 加上10像素的边距
+        } else {
+            // Fallback to cursor position if the rectangle is invalid or too large
+            QPoint mousePosition = QCursor::pos();
+            popupPosition = mousePosition;
+            qDebug() << "Invalid captured rect, falling back to cursor position.";
+        }
+    }
+    else{
+        qDebug() << "Detected clipboard event. Processing text:" << lastCapturedText;
+        QPoint mousePosition = QCursor::pos();
+        popupPosition = mousePosition;
+        qDebug() << "Invalid captured rect, falling back to cursor position.";
+    }
+
+    qDebug() << "Popup Position (Logical) X:" << popupPosition.x() << "Y:" << popupPosition.y();
+    popup->move(popupPosition);
+
+
     connect(rewriteButton,&QPushButton::clicked,this,&MainWindow::rewriteText);
     connect(rewriteButtonWithPrompt,&QPushButton::clicked,this,&MainWindow::onRewriteWithPromptClicked);
-
     //hover 3s then close automatically
+    qDebug() <<"显示popup";
+    popup->setAttribute(Qt::WA_DeleteOnClose, true);
+    connect(popup, &QWidget::destroyed, this, [this](){
+        setIsRewriteFlowActive(false);
+    });
     QTimer::singleShot(3000, popup, &QWidget::close);
     popup->show();
 }
 
 void MainWindow::checkClipboard()
 {
+    if (!isClipboardMonitorEnabled) {
+        return;
+    }
     QClipboard* clipboard=QApplication::clipboard();
     QString currentText=clipboard->text();
 
-    if(currentText!=previousClipboardText){
-        previousClipboardText=currentText;
-        showRewritePrompt(currentText);
+    if(currentText!=previousClipboardText && !currentText.isEmpty()){
+        previousClipboardText = currentText;
+        lastCapturedText=currentText;
+        lastClipboardText=currentText;
+        qDebug() << "Clipboard content changed. Starting typing timer for rewrite prompt.";
+        typingTimer->start(800);
     }
 }
 
 void MainWindow::rewriteText()
 {
+    // 手动关闭 popup，防止它在后台自动关闭
+    if(popup) {
+        popup->close();
+        popup->deleteLater(); // 立即删除
+        popup = nullptr;
+    }
+    setIsRewriteFlowActive(false);
     QClipboard* clipboard=QApplication::clipboard();
     QString currentText=clipboard->text();
-
-    aiClient->sendRewriteRequest(currentText);
+    QString textForRewrite = isClipboardEvent ? currentText : lastCapturedText;
+    if (textForRewrite.trimmed().isEmpty()) {
+        QMessageBox::warning(this, "Warning", "没有可重写的文本。");
+        return;
+    }
+    aiClient->sendRewriteRequest(textForRewrite);
 }
 
 void MainWindow::onRewriteWithPromptClicked()
 {
+    // 手动关闭 popup，防止它在后台自动关闭
+    if(popup) {
+        popup->close();
+        popup->deleteLater(); // 立即删除
+        popup = nullptr;
+    }
+
     bool ok;
     QString prompt=QInputDialog::getText(popup,"Enter Prompt", "Please enter the prompt:", QLineEdit::Normal, "", &ok);
+    setIsRewriteFlowActive(false);
     if(ok && !prompt.isEmpty()){
         QClipboard* clipboard=QApplication::clipboard();
         QString currentText=clipboard->text();
-
+        QString textForRewrite = isClipboardEvent ? currentText : lastCapturedText;
+        if (textForRewrite.trimmed().isEmpty()) {
+            QMessageBox::warning(this, "Warning", "没有可重写的文本。");
+            return;
+        }
         if(!currentText.isEmpty()){
-            aiClient->sendRewriteRequest(currentText,prompt);
+            aiClient->sendRewriteRequest(textForRewrite,prompt);
         }
     }else{
         QMessageBox::warning(this, "Warning", "Prompt cannot be empty!");
     }
+
 }
 
 void MainWindow::UISetup()
@@ -1043,10 +1178,24 @@ void MainWindow::handleTitleGenerated(const QString &title)
 
 void MainWindow::handleRewritedContent(const QString &rewritedContent)
 {
-    QClipboard *clipboard = QApplication::clipboard();
-    clipboard->setText(rewritedContent);//paste the rewritedContent to clipboard
-    QApplication::beep();//notify user task has done
+    // 允许后续再次触发弹窗
+    lastCapturedText.clear();
+
+    if (isClipboardEvent) {
+        QClipboard *clipboard = QApplication::clipboard();
+        clipboard->setText(rewritedContent);
+        QApplication::beep();
+    } else {
+        // 优先通过 UIA 写回；失败时，内部会走粘贴兜底
+        setControlTextUIA(editBlock, rewritedContent);
+        if (editBlock) { editBlock->Release(); editBlock = nullptr; }
+        else{
+            // 没有可用的 UIA 目标，就兜底粘贴
+            pasteTextIntoActiveControl(rewritedContent);
+        }
+    }
 }
+
 
 void MainWindow::handlePicContent(const QPixmap &image)
 {
