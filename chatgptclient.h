@@ -18,12 +18,14 @@ public:
     virtual void sendMessage(const QString &userInput, const QJsonArray &conversationHistory) override;
     virtual void requestConversationTitle(const QString &firstMessage) override;
     virtual void sendRewriteRequest(const QString &usersClipBoardText, const QString &usersDemand) override;
-
+    virtual void sendTranslateRequest(const QString &usersClipBoardText, const QString &targetLanguage="English") override;
 private slots:
     void onNetworkReplyFinished(QNetworkReply *reply);
 
     // AIClient interface
 
+
+    // AIClient interface
 };
 
 #endif // CHATGPTCLIENT_H

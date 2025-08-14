@@ -117,7 +117,7 @@ void ChatGPTClient::onNetworkReplyFinished(QNetworkReply *reply)
                                 extractedText = gptReplyObject["content"].toString().trimmed();
                                 qDebug()<<"extracted text"<<extractedText;
                                 // Additional processing (such as header generation or rewriting)
-                                if (type == RequestType::TitleGernation || type == RequestType::Rewrite) {
+                                if (type == RequestType::TitleGernation || type == RequestType::Rewrite || type == RequestType::Translate) {
                                     if (extractedText.startsWith("\"") && extractedText.endsWith("\"")) {
                                         extractedText = extractedText.mid(1, extractedText.length() - 2);
                                     }
@@ -148,6 +148,10 @@ void ChatGPTClient::onNetworkReplyFinished(QNetworkReply *reply)
     }else if(type ==RequestType::Rewrite){
         qDebug() << "Emitting aiResponseReceived signal with response: " << extractedText;
         emit rewritedContentReceived(extractedText);
+    }
+    else if(type == RequestType::Translate){
+        qDebug() << "Emitting translateContentReceived signal with response: " << extractedText;
+        emit translateContentReceived(extractedText);
     }
     reply->deleteLater();
 }
@@ -254,6 +258,41 @@ void ChatGPTClient::sendRewriteRequest(const QString &usersClipBoardText, const 
     QNetworkReply* reply=networkManager->post(request,requestData);
     requestTypeMap.insert(reply,RequestType::Rewrite);
     qDebug() << "Sending text rewrite request to ChatGPT:" << QString(requestData);
+}
+
+void ChatGPTClient::sendTranslateRequest(const QString &usersClipBoardText, const QString &targetLanguage)
+{
+    if(ChatGPT_Key.isEmpty()){
+        QMessageBox::information(nullptr,"Info","Current ChatGPT API Key is empty.");
+        return;
+    }
+    QUrl url("https://llmxapi.com/v1/chat/completions"); //GPT-4o api
+
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", "Bearer " + ChatGPT_Key.toUtf8());
+    request.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");
+
+    QJsonArray messages;
+    QJsonObject userMessage;
+    userMessage["role"] = "user";
+    userMessage["content"] = "Translate user's text to targeted language(default target language is English)"
+                             "(ONLY returns the translated text, NO OTHER TEXT)"
+                             "Starts with: \"" + usersClipBoardText + "\" ; Target language: " + targetLanguage;
+    messages.append(userMessage);
+    //build request struct
+    QJsonObject requestBody;
+    requestBody["model"]="gpt-4o";
+    requestBody["messages"] = messages;
+    requestBody["temperature"] = 0.7;
+    //requestBody["max_tokens"] = 100;
+    requestBody["top_p"] = 1;
+    requestBody["frequency_penalty"] = 0;
+    requestBody["presence_penalty"] = 0;
+
+    QByteArray requestData = QJsonDocument(requestBody).toJson();
+    QNetworkReply* reply=networkManager->post(request,requestData);
+    requestTypeMap.insert(reply,RequestType::Rewrite);
+    qDebug() << "Sending text translate request to ChatGPT:" << QString(requestData);
 }
 
 QJsonArray ChatGPTClient::builtChatGPTContents(const QJsonArray &conversationHistory, const QString &currentUserInput)

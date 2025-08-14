@@ -24,6 +24,9 @@ public:
     //request to rewrite
     virtual void sendRewriteRequest(const QString& usersClipBoardText,const QString& usersDemand="")=0;
 
+    //request translate
+    virtual void sendTranslateRequest(const QString& usersClipBoardText,const QString& targetLanguage="English")=0;
+
     //pic generation
     virtual void sendPicGenerationRequest(const QString& prompt)=0;
 signals:
@@ -37,6 +40,8 @@ signals:
     void rewritedContentReceived(const QString& rewritedContent);
     //pic gen
     void generatedImgReceived(const QPixmap& image);
+    //translate
+    void translateContentReceived(const QString& translatedContent);
 protected:
 
     QNetworkAccessManager* networkManager;
@@ -44,6 +49,7 @@ protected:
         ChatMessage,
         TitleGernation,
         Rewrite,
+        Translate,
         PicGeneration
     };
 };

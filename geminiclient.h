@@ -18,13 +18,14 @@ public:
     void sendMessage(const QString& userInput,const QJsonArray& conversationHistory) override;
     void requestConversationTitle(const QString& firstMessage) override;
     void sendRewriteRequest(const QString &usersClipBoardText,const QString& usersDemand="") override;
+    void sendTranslateRequest(const QString &usersClipBoardText, const QString &targetLanguage="English") override;
     void sendPicGenerationRequest(const QString &prompt) override;
 private slots:
     void onNetworkReplyFinished(QNetworkReply *reply);
 
     // AIClient interface
 
-
+    // AIClient interface
 
 };
 

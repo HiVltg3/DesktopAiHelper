@@ -203,7 +203,7 @@ void GeminiClient::onNetworkReplyFinished(QNetworkReply *reply)
                                     extractedText=textObj["text"].toString().trimmed();
 
                                     //extra steps for title
-                                    if(type==RequestType::TitleGernation|type==RequestType::Rewrite){
+                                    if(type==RequestType::TitleGernation||type==RequestType::Rewrite || type == RequestType::Translate){
                                         if(extractedText.startsWith("\"")&&extractedText.endsWith("\"")){
                                             extractedText=extractedText.mid(1,extractedText.length()-2);
                                         }
@@ -232,6 +232,10 @@ void GeminiClient::onNetworkReplyFinished(QNetworkReply *reply)
         qDebug() << "Emitting aiResponseReceived signal with response: " << extractedText;
         emit rewritedContentReceived(extractedText);
     }
+    else if(type == RequestType::Translate){
+        qDebug() << "Emitting translateContentReceived signal with response: " << extractedText;
+        emit translateContentReceived(extractedText);
+    }
 }
 void GeminiClient::sendRewriteRequest(const QString &usersClipBoardText, const QString &usersDemand)//rewrite func, under construction
 {
@@ -252,6 +256,57 @@ void GeminiClient::sendRewriteRequest(const QString &usersClipBoardText, const Q
                      "based on the user's input and the specific context. (Must be same language as user's) "
                      "If the user has a specific rewriting direction, please follow the user's rewriting direction.(ONLY returns the most appropriate anwser(1 ONLY), NO OTHER TEXT)"
                      "Starts with: \"" + usersClipBoardText + "\" ; User's rewriting direction: " + usersDemand;
+
+    QJsonArray partsArray;
+    QJsonObject textPart;
+    textPart["text"] = prompt; // insert the comeplete promtp into text
+    partsArray.append(textPart);
+
+    // Constructing a content object: including roles and parts
+    QJsonObject userContent;
+    userContent["role"] = "user"; // sender is user
+    userContent["parts"] = partsArray; // Contains the parts array constructed above
+
+    // Construct the contents array: Contains all content objects (there is only one round of user request here)
+    QJsonArray contentsArray;
+    contentsArray.append(userContent);
+
+    // Construct the final JSON request object
+    QJsonObject jsonRequest;
+    jsonRequest["contents"] = contentsArray;
+    //parameters
+    QJsonObject generationConfig;
+    generationConfig["temperature"] = 0.3;
+    jsonRequest["generationConfig"] = generationConfig;
+
+    QJsonDocument doc(jsonRequest);
+    QByteArray data = doc.toJson();
+
+    // Sending the request
+    QNetworkReply* reply = networkManager->post(request, data);
+    requestTypeMap.insert(reply, RequestType::Rewrite);
+    qDebug() << "Sending the rewrite request to Gemini:" << QString(data);
+}
+
+//Translate
+void GeminiClient::sendTranslateRequest(const QString &usersClipBoardText, const QString &targetLanguage)
+{
+    if(Gemini_Key.isEmpty()){
+        QMessageBox::information(nullptr,"Info","Current Gemini API Key is empty.");
+        return;
+    }
+
+    QUrl url("https://llmxapi.com/v1beta/models/gemini-2.5-flash:generateContent");
+    QUrlQuery query;
+    query.addQueryItem("key", Gemini_Key);
+    url.setQuery(query);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    // Prepare the JSON structure
+    QString prompt = "Translate user's text to targeted language(default target language is English)"
+                     "(ONLY returns the translated text, NO OTHER TEXT)"
+                     "Starts with: \"" + usersClipBoardText + "\" ; Target language: " + targetLanguage;
 
     QJsonArray partsArray;
     QJsonObject textPart;
