@@ -2,12 +2,12 @@
 
 A desktop AI assistant that brings **rewriting & translation** into **any Windows app**. It shows a small panel near where you type or copy, captures text via **UI Automation (UIA)**, calls an AI model (OpenAI GPT / Google Gemini), and writes back using **ValuePattern** or **fallback paste** — while the keyboard hook **only queues work** and all UI/COM run on the Qt GUI thread for stability.
 
-> - `img/main.png` — Main UI
-> - `img/anchor-mode.gif` — Typing → anchored panel (input corner)
-> - `img/at-cursor.gif` — Copy → panel at cursor (auto-hide)
-> - `img/translate.gif` — Translate & overwrite
+> - ![Main UI](img/main.png) — Main UI
+> - ![Anchor Mode](img/anchor-mode.gif) — Typing → anchored panel (input corner)
+> - ![At Cursor Mode](img/at-cursor.gif) — Copy → panel at cursor (auto-hide)
+> - ![Translate Feature](img/translate.gif) — Translate & overwrite
 
----
+--- 
 
 ## Features
 - **Rewrite / Rewrite with Prompt** inside any app
