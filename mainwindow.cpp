@@ -693,10 +693,16 @@ void MainWindow::ensureRewritePanelInit()
 
     QPushButton* rewriteButton=new QPushButton("Rewrite",rewritePanel);
     QPushButton* rewriteButtonWithPrompt=new QPushButton("Rewrite with prompt",rewritePanel);
+    QPushButton* translateButton=new QPushButton("Translate",rewritePanel);
+
     rewritePanelLayout->addWidget(rewriteButton);
     rewritePanelLayout->addWidget(rewriteButtonWithPrompt);
+    rewritePanelLayout->addWidget(translateButton);
+
     rewriteButton->setFixedHeight(30);
     rewriteButtonWithPrompt->setFixedHeight(30);
+    translateButton->setFixedHeight(30);
+
     QString buttonStyle = R"(
         QPushButton {
             background-color: #f0f0f0;
@@ -721,6 +727,8 @@ void MainWindow::ensureRewritePanelInit()
     rewriteButtonWithPrompt->setStyleSheet(buttonStyle);
     rewriteButton->setIcon(QIcon(":/icons/icons/magicwand.png"));
     rewriteButtonWithPrompt->setIcon(QIcon(":/icons/icons/magicwand.png"));
+    translateButton->setIcon(QIcon(":/icons/icons/translate.png"));
+
     // Make the rewritePanel window automatically resize according to the content of its layout
     rewritePanel->adjustSize();
     connect(rewriteButton, &QPushButton::clicked, this, [this](){
@@ -735,6 +743,8 @@ void MainWindow::ensureRewritePanelInit()
         pendingTextForRewrite.clear();
     });
     connect(rewriteButtonWithPrompt, &QPushButton::clicked, this, &MainWindow::onRewriteWithPromptClicked);
+    connect(translateButton, &QPushButton::clicked, this, &MainWindow::onTranslateButtonClicked);
+
     //跟随定位
     panelAnchorTimer = new QTimer(this);
     panelAnchorTimer->setInterval(200);
@@ -935,6 +945,26 @@ void MainWindow::onRewriteWithPromptClicked()
     pendingTextForRewrite.clear();
 }
 
+void MainWindow::onTranslateButtonClicked(){
+    //defualt is English, if need other language just uncomment the code below
+    //bool ok = false;
+    // QString prompt = QInputDialog::getText(rewritePanel, "Enter target language",
+    //                                        "Please type target language:",
+    //                                        QLineEdit::Normal, "", &ok);
+    // if (!ok || prompt.trimmed().isEmpty()) {
+    //     QMessageBox::warning(this, "Warning", "Prompt cannot be empty!");
+    //     return;
+    // }
+
+    if (pendingTextForRewrite.trimmed().isEmpty()) {
+        QMessageBox::warning(this, "Warning", "No text for translating");
+        return;
+    }
+    hideRewriteUI();
+    setIsRewriteFlowActive(false);
+    aiClient->sendTranslateRequest(pendingTextForRewrite, QString("English"));
+    pendingTextForRewrite.clear();
+}
 void MainWindow::UISetup()
 {
 
@@ -1076,6 +1106,7 @@ void MainWindow::GeminiSetup()
     connect(aiClient,&GeminiClient::errorOccured,this,&MainWindow::handleAiError);
     connect(aiClient,&GeminiClient::rewritedContentReceived,this,&MainWindow::handleRewritedContent);
     connect(aiClient,&GeminiClient::generatedImgReceived,this,&MainWindow::handlePicContent);
+    connect(aiClient,&GeminiClient::translateContentReceived,this,&MainWindow::handleRewritedContent);
 
 }
 
@@ -1100,6 +1131,7 @@ void MainWindow::ChatGPTSetup()
     connect(aiClient,&ChatGPTClient::titleGenerated,this,&MainWindow::handleTitleGenerated);
     connect(aiClient,&ChatGPTClient::errorOccured,this,&MainWindow::handleAiError);
     connect(aiClient,&ChatGPTClient::rewritedContentReceived,this,&MainWindow::handleRewritedContent);
+    connect(aiClient,&ChatGPTClient::translateContentReceived,this,&MainWindow::handleRewritedContent);
 }
 
 //user can press enter to send text

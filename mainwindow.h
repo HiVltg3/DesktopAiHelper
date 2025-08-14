@@ -127,6 +127,7 @@ private slots:
     //rewrite function related
     void checkClipboard();
     void onRewriteWithPromptClicked();
+    void onTranslateButtonClicked();
 //-------------------------------rewrite related-------------------------------//
 
 private: //functions
