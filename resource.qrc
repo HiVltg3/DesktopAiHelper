@@ -8,14 +8,16 @@
         <file>icons/sendIcon.png</file>
         <file>icons/close.png</file>
         <file>icons/hide.png</file>
+        <file>icons/translate.png</file>
     </qresource>
     <qresource prefix="/style">
         <file>style.qss</file>
     </qresource>
     <qresource prefix="/demostration">
-        <file>img/rewriteDemo.gif</file>
-        <file>img/demo.png</file>
+        <file>img/at-cursor.gif</file>
         <file>img/AIModelSelect.png</file>
-        <file>img/ImgGeneration.png</file>
+        <file>img/main.png</file>
+        <file>img/anchor-mode.gif</file>
+        <file>img/translate.gif</file>
     </qresource>
 </RCC>
