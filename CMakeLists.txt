@@ -23,6 +23,11 @@ qt_add_executable(DesktopAiHelper
     resource.qrc
     README.md
     chatgptclient.h chatgptclient.cpp
+    .github/ISSUE_TEMPLATE/bug_report.md
+    .github/PULL_REQUEST_TEMPLATE.md
+    docs/ARCHITECTURE.md docs/DEBUGLOG.md docs/PRIVACY.md docs/ROADMAP.md
+    CHANGELOG.md
+    docs/TECHNICAL_OVERVIEW.md
 
 
 
